@@ -86,10 +86,14 @@ Try it in ASI:One: mention the registry's handle and ask, for example:
 uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -r requirements.txt
 cp .env.example .env              # ANTHROPIC_API_KEY (required), SUBQ_API_KEY (optional)
 .venv/bin/python -m pytest tests repos/billing/reference_tests -q   # sandbox + gate + reference suite
+./pipeline.sh                     # everything below, in order, then writes the README results
 .venv/bin/python learn.py         # workers on train issues -> Writer -> gate -> Registry broadcast
 .venv/bin/python run_compare.py compare     # 4-arm held-out experiment
 .venv/bin/python run_compare.py compare --versions   # held-out effect per check-set version
 .venv/bin/python reuse.py compare # Registry reuse vs writing from scratch (tokens + minutes)
+.venv/bin/python run_compare.py compare --antibody [--no-enforce]   # full system / its notes-only control
+.venv/bin/python ablation.py      # CEGIS ablation: single-round Writer drafts through the gate
+.venv/bin/python report.py --readme   # regenerate the Results section from antibody.db
 .venv/bin/python demo.py          # the 5 demo beats, read from antibody.db
 .venv/bin/python agents/registry.py   # Registry uAgent (open the printed inspector link -> Connect -> Mailbox)
 ```
@@ -109,6 +113,9 @@ agents/registry.py  the Registry uAgent (Agent Chat Protocol, mailbox, ASI:One)
 learn.py       training and learning loop
 run_compare.py 4-arm held-out experiment
 reuse.py       with vs without Registry, measured
+ablation.py    CEGIS ablation
+report.py      renders README results from SQLite
+pipeline.sh    full reproducible run
 demo.py        prints the 5 demo beats from SQLite
 repos/billing/ billing service (money → line_items → tax → totals → invoices → reports) + reference_tests/
 issues/        issue queues (build_issues.py → A.json, B.json, C.json)
@@ -134,6 +141,19 @@ tests/         test_sandbox.py, test_gate.py
   labelled `boundary_off_by_one` and `type_contract` on different runs.
 - **The Writer sees the failing CI output** (assertion messages and test names), like a developer
   reading CI, but never the reference test code.
+- **A held-out leak was found and fixed.** In the first full run, the Writer, adapter and seeder saw
+  each worker's whole module, including the reference implementations of the held-out functions.
+  Every learned check ended up calling held-out functions by name. Those results were discarded
+  (archived locally, not reported).
+  - Now every model context is a **training-era view** with the held-out functions and types removed.
+  - Held-out reference tests and the trace lines that mention them are filtered from model inputs.
+    They still label changes, since they're the oracle.
+  - The gate REJECTs any check that names held-out code.
+  - All numbers below are from the clean re-run (`pipeline.sh`).
+- **More arms than the plan's four.** `shared_notes` (the antibody recipes as notes, no checks) is a
+  control, so `antibody` vs `shared_notes` isolates what enforcement adds. `antibody` (checks plus
+  their recipes) is the full system. It starts from the check sets as they were before the
+  experiment and has its own rollback monitor.
 - **Statistics.** Small n (7 held-out tickets per worker × 5 seeds). Wilson intervals are reported;
   read the differences with that in mind.
 - **Rollback** is implemented and runs on every held-out change in the network arm. It fires only if
