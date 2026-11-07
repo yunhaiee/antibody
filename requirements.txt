@@ -1,5 +1,5 @@
 uagents>=0.25.5
-openai>=1.40
+anthropic>=2.0
 pytest
 hypothesis
 python-dotenv

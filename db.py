@@ -9,7 +9,8 @@ import config
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS llm_calls (
   id INTEGER PRIMARY KEY, ts REAL, provider TEXT, model TEXT, role TEXT, run_id TEXT,
-  input_tokens INT, output_tokens INT, cached_tokens INT, reasoning_tokens INT,
+  input_tokens INT, output_tokens INT, cached_tokens INT, cache_write_tokens INT,
+  effort TEXT, stop_reason TEXT,
   latency_ms INT, prompt TEXT, output TEXT, error TEXT);
 CREATE TABLE IF NOT EXISTS runs (
   id TEXT PRIMARY KEY, kind TEXT, arm TEXT, started REAL, finished REAL, meta TEXT);

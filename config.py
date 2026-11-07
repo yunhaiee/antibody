@@ -14,13 +14,16 @@ DB_PATH = Path(os.environ.get("ANTIBODY_DB", ROOT / "antibody.db"))
 BILLING_REPO = ROOT / "repos" / "billing"
 ISSUES_DIR = ROOT / "issues"
 
-# ---- Meta Model API (Muse Spark), OpenAI-compatible Chat Completions ----
-MUSE_BASE_URL = os.environ.get("MUSE_BASE_URL", "https://api.meta.ai/v1")
-MUSE_MODEL = os.environ.get("MUSE_MODEL", "muse-spark-1.3")
-MUSE_API_KEY = os.environ.get("MODEL_API_KEY", "")
-MUSE_REASONING_EFFORT = os.environ.get("MUSE_REASONING_EFFORT", "low")
-MUSE_MAX_COMPLETION_TOKENS = int(os.environ.get("MUSE_MAX_COMPLETION_TOKENS", "8000"))
-MUSE_TIMEOUT_S = 300
+# ---- LLM: Claude (Anthropic API). One model; effort is the per-role dial so every
+# role shares one prompt-cache namespace. ----
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-opus-5-5")
+EFFORT = {            # per-role reasoning effort
+    "writer": "high",     # turns a failure into a general check + variants + look-alikes
+    "adapter": "medium",  # rewrites a peer's check for this worker's module
+    "worker": "low",      # implements an issue
+    "router": "low",      # parses ASI:One chat into a command
+}
+LLM_MAX_TOKENS = 16000
 
 # ---- Subquadratic SubQ Snap 1.1 (Decisions API; routing/matching only) ----
 SUBQ_BASE_URL = "https://api.subq.ai/v1"
