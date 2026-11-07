@@ -114,6 +114,13 @@ def md() -> str:
                    f"with CEGIS: {len(full)}/{len(full)} adopted, "
                    f"{sum(f['variants_caught'] or 0 for f in full)}/{sum(f['variants_total'] or 0 for f in full)} variants caught. "
                    + "; ".join(f"{a['worker']} {a['bug_class']}: {a['verdict']} {a['variants_caught']}/{a['variants_total']}" for a in abl if a["verdict"] != "ADOPT") + "\n")
+    se = {r["arm"]: json.loads(r["detail"]) for r in db.query("SELECT arm, detail FROM metrics WHERE run_id='snap_eval'")}
+    if se:
+        out.append(f"**Registry matching** on the {se['keyword']['n']} real held-out failures: SubQ Snap 1.1 (one yes/no "
+                   f"decision per proven check, about 0.4 s and under 1k input tokens per lookup) found the right check "
+                   f"family **{se['snap']['right']}/{se['snap']['n']}** times; keyword signatures found it "
+                   f"{se['keyword']['right']}/{se['keyword']['n']} times. The reference is the bug classifier's label, "
+                   "which is itself imperfect. (`snap_eval.py`)\n")
     cost = db.query("SELECT model, COUNT(*) n, SUM(input_tokens) i, SUM(cached_tokens) c, SUM(output_tokens) o "
                     "FROM llm_calls GROUP BY model ORDER BY n DESC")
     out.append("**Cost log** (all calls today, from `llm_calls`): " + "; ".join(

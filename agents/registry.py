@@ -74,6 +74,10 @@ def fmt_verdicts(vs: list[dict]) -> str:
 def answer_find(text: str, bug_class: str) -> str:
     sig = sigmod.from_text(text, None if bug_class == "unknown" else bug_class)
     matches = registry_core.lookup(sig, min_score=0.3, worker="asi1")
+    via = "keyword signature match"
+    if not matches:  # free text: let SubQ Snap 1.1 decide which proven check (if any) applies
+        matches = registry_core.snap_lookup(text, worker="asi1")
+        via = "SubQ Snap 1.1 decision"
     if not matches:
         return (f"No **proven** check matches that ({bug_class}). Proven = adopted by at least one worker "
                 f"after passing the gate. Registry: {json.dumps(registry_core.stats())}")
@@ -83,7 +87,7 @@ def answer_find(text: str, bug_class: str) -> str:
     more = "" if len(matches) == 1 else "\n\nOther matches: " + ", ".join(
         f"#{x['check_id']} ({x['bug_class']}, score {x['score']})" for x in matches[1:4])
     return (f"Yes — check **#{m['check_id']}** ({m['bug_class']}), written by Worker {m['origin_worker']}'s "
-            f"Antibody Writer, adopted by worker(s) {', '.join(adopted) or '–'}. Match score {m['score']}.\n\n"
+            f"Antibody Writer, adopted by worker(s) {', '.join(adopted) or '–'}. Matched by {via} (score {m['score']}).\n\n"
             f"**Evidence (every number from a sandboxed run, labelled by the hidden reference suite):**\n"
             f"{fmt_verdicts(m['verdicts'])}\n\n**Fix recipe:** {m['fix_recipe']}\n\n"
             f"```python\n{code}\n```\n(sha {m['hash']}){more}")
