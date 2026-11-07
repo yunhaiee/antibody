@@ -214,11 +214,33 @@ def pinned_set(worker: str, version: int) -> list[int]:
     return json.loads(db.query("SELECT check_ids FROM check_sets WHERE worker=? AND version=?", worker, version)[0]["check_ids"])
 
 
-def run_antibody_arm(run_id: str, seeds: int, versions: dict, enforce: bool = True):
+def instance_flags(worker, issue, ids, files, run_id):
+    """Advisory instances of the worker's proven checks for a NEW function (implement tickets)."""
+    import registry_core
+    if issue["kind"] != "implement" or issue["split"] != "heldout":
+        return []
+    flags = []
+    for cid in ids:
+        inst = registry_core.instantiate(cid, worker, issue, run_id=f"{run_id}-instantiate")
+        if inst["not_applicable"] or not inst["code"]:
+            continue
+        r = gate.run_many(inst["code"], [files])[0]
+        if r.status != "pass":
+            flags.append((cid, r))
+    return flags
+
+
+def run_antibody_arm(run_id: str, seeds: int, versions: dict, enforce: bool = True, instances: bool = False):
     """antibody = network checks (pinned to the pre-experiment check-set versions, with an
     arm-local rollback monitor) + the fix recipes of those same checks as rules-file notes."""
     seen = seen_classes()
-    arm_name = "antibody" if enforce else "shared_notes"
+    arm_name = ("antibody+instances" if instances else "antibody") if enforce else "shared_notes"
+    if instances:  # build every instance once (cached per check x ticket), in parallel
+        import registry_core
+        pairs = [(w, cid, iss) for w in config.WORKERS for iss in heldout(w) if iss["kind"] == "implement"
+                 for cid in pinned_set(w, versions[w])]
+        with ThreadPoolExecutor(8) as ex:
+            list(ex.map(lambda p: registry_core.instantiate(p[1], p[0], p[2], run_id=f"{run_id}-instantiate"), pairs))
 
     def per_worker(w):
         ids = pinned_set(w, versions[w])
@@ -227,7 +249,14 @@ def run_antibody_arm(run_id: str, seeds: int, versions: dict, enforce: bool = Tr
         out, rollbacks = [], []
         for iss in heldout(w):
             for s in range(seeds):
-                r = workers.run_issue(w, iss, arm=arm_name, seed=s, run_id=run_id, notes=recipes)
+                prev = db.query("SELECT * FROM changes WHERE run_id=? AND arm='antibody' AND worker=? AND issue_id=? AND seed=?",
+                                run_id, w, iss["id"], s) if instances else []
+                if prev:  # paired with the antibody arm: same initial proposal, only instances differ
+                    p0 = prev[0]
+                    r = {"label": p0["label"], "files": json.loads(p0["files"]) if p0["files"] else None,
+                         "bug_class": p0["bug_class"], "change_id": p0["id"]}
+                else:
+                    r = workers.run_issue(w, iss, arm=arm_name, seed=s, run_id=run_id, notes=recipes)
                 if r["label"] == "invalid":
                     out.append(dict(label="invalid", merged=False)); continue
                 if not enforce:
@@ -243,11 +272,18 @@ def run_antibody_arm(run_id: str, seeds: int, versions: dict, enforce: bool = Tr
                         rollbacks.append(cid)
                 ids = [i for i in ids if i not in rollbacks]
                 flags = [(c, x) for c, x in flags if c in ids]
+                advisory = instance_flags(w, iss, ids, files, run_id) if instances else []
+                if advisory and not flags:  # advisory: feedback + one retry, never a hard block
+                    base = db.query("SELECT * FROM changes WHERE id=?", r["change_id"])[0]
+                    res = gated_arm_with(run_id, arm_name, w, iss, s, base, ids, advisory, recipes)
+                    res["advisory"] = True
+                    out.append(res)
+                    continue
                 if not flags:
                     out.append(dict(label=r["label"], merged=True, bug_class=r.get("bug_class"), blocked=False, false_block=False))
                     continue
                 base = db.query("SELECT * FROM changes WHERE id=?", r["change_id"])[0]
-                res = gated_arm_with(run_id, "antibody", w, iss, s, base, ids, flags, recipes)
+                res = gated_arm_with(run_id, arm_name, w, iss, s, base, ids, flags, recipes)
                 out.append(res)
         return out, rollbacks
 
@@ -265,7 +301,9 @@ def run_antibody_arm(run_id: str, seeds: int, versions: dict, enforce: bool = Tr
          "repeat_bug_rate": len(repeat) / n, "bug_escape_rate": len(bugs) / n,
          "good_merged_rate": sum(x["label"] == "good" for x in merged) / n,
          "blocked": sum(x.get("blocked", False) for x in outcomes),
-         "false_blocks": sum(x.get("false_block", False) for x in outcomes),
+         "false_blocks": sum(x.get("false_block", False) and not x.get("advisory") for x in outcomes),
+         "advisory_retries": sum(bool(x.get("advisory")) for x in outcomes),
+         "advisory_on_good": sum(bool(x.get("advisory")) and x.get("false_block", False) for x in outcomes),
          "arm_rollbacks": sum(len(v) for v in rb_all.values())}
     m["repeat_bug_rate_lo"], m["repeat_bug_rate_hi"] = gate.wilson(m["repeat_bugs_through"], n)
     for k, v in m.items():
@@ -297,7 +335,8 @@ if __name__ == "__main__":
     rid = sys.argv[1] if len(sys.argv) > 1 else "compare"
     if "--antibody" in sys.argv:
         vers = json.loads((config.ROOT / "runs" / "pre_experiment_versions.json").read_text())
-        run_antibody_arm(rid, config.HELDOUT_SEEDS, vers, enforce="--no-enforce" not in sys.argv)
+        run_antibody_arm(rid, config.HELDOUT_SEEDS, vers, enforce="--no-enforce" not in sys.argv,
+                         instances="--instances" in sys.argv)
     elif "--versions" in sys.argv:
         print("\n=== Held-out effect per check-set version (shared 'none' proposals) ===")
         print(f"{'worker':6s} {'ver':>3s} {'caught buggy':>12s} {'flagged good':>12s}  reason")

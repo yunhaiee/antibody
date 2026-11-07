@@ -26,8 +26,9 @@ def md() -> str:
             "shared_notes": "the antibody recipes as notes, no checks (control)",
             "checks": "its own adopted checks gate merges (1 retry)",
             "network": "own + peers' adapted checks, live rollback",
-            "antibody": "network checks **and** their fix recipes (the full system)"}
-    for arm in ("none", "notes", "shared_notes", "checks", "network", "antibody"):
+            "antibody": "network checks **and** their fix recipes",
+            "antibody+instances": "antibody + work-time instances of proven checks for NEW functions (advisory: feedback + 1 retry)"}
+    for arm in ("none", "notes", "shared_notes", "checks", "network", "antibody", "antibody+instances"):
         x = m.get(arm)
         if not x:
             continue
@@ -66,7 +67,8 @@ def md() -> str:
     abl = db.query("SELECT v.worker, c.bug_class, v.verdict, v.variants_caught, v.variants_total FROM verdicts v "
                    "JOIN checks c ON c.id=v.check_id WHERE c.kind='ablation-cegis1' ORDER BY v.id")
     full = db.query("SELECT le.worker, le.bug_class, v.variants_caught, v.variants_total FROM learn_events le "
-                    "JOIN verdicts v ON v.check_id=le.check_id AND v.worker=le.worker WHERE le.path='writer' ORDER BY le.id")
+                    "JOIN verdicts v ON v.check_id=le.check_id AND v.worker=le.worker "
+                    "WHERE le.path='writer' AND v.verdict IN ('ADOPT','REJECT') ORDER BY le.id")
     out.append(f"**Registry verdicts**: " + ", ".join(f"{k} {n}" for k, n in sorted(v.items())) +
                ". Every ROLLBACK came from the frozen rule (≥ 2 false alarms in the last 10 monitored changes).\n")
     if abl:
@@ -74,7 +76,7 @@ def md() -> str:
                    f"{sum(a['verdict'] == 'ADOPT' for a in abl)}/{len(abl)} adopted, "
                    f"{sum(a['variants_caught'] or 0 for a in abl)}/{sum(a['variants_total'] or 0 for a in abl)} variants caught; "
                    f"with CEGIS: {len(full)}/{len(full)} adopted, "
-                   f"{sum(f['variants_caught'] for f in full)}/{sum(f['variants_total'] for f in full)} variants caught. "
+                   f"{sum(f['variants_caught'] or 0 for f in full)}/{sum(f['variants_total'] or 0 for f in full)} variants caught. "
                    + "; ".join(f"{a['worker']} {a['bug_class']}: {a['verdict']} {a['variants_caught']}/{a['variants_total']}" for a in abl if a["verdict"] != "ADOPT") + "\n")
     cost = db.query("SELECT model, COUNT(*) n, SUM(input_tokens) i, SUM(cached_tokens) c, SUM(output_tokens) o "
                     "FROM llm_calls GROUP BY model ORDER BY n DESC")
