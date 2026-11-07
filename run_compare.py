@@ -206,10 +206,93 @@ def print_tables(run_id, rows, seeds, tok, secs):
 
 if __name__ == "__main__":
     rid = sys.argv[1] if len(sys.argv) > 1 else "compare"
-    if "--versions" in sys.argv:
+    if "--antibody" in sys.argv:
+        vers = {"A": 3, "B": 4, "C": 5} if len(sys.argv) < 4 else json.loads(sys.argv[3])
+        run_antibody_arm(rid, config.HELDOUT_SEEDS, vers)
+    elif "--versions" in sys.argv:
         print("\n=== Held-out effect per check-set version (shared 'none' proposals) ===")
         print(f"{'worker':6s} {'ver':>3s} {'caught buggy':>12s} {'flagged good':>12s}  reason")
         for w, v, reason, c, nb, fa, ng, _ in version_table():
             print(f"{w:6s} v{v:<2d} {c:>5d}/{nb:<6d} {fa:>5d}/{ng:<6d}  {reason}")
     else:
         main(rid, config.HELDOUT_SEEDS)
+
+
+# ------------------------------------------------------------------ full system arm
+def pinned_set(worker: str, version: int) -> list[int]:
+    return json.loads(db.query("SELECT check_ids FROM check_sets WHERE worker=? AND version=?", worker, version)[0]["check_ids"])
+
+
+def run_antibody_arm(run_id: str, seeds: int, versions: dict):
+    """antibody = network checks (pinned to the pre-experiment check-set versions, with an
+    arm-local rollback monitor) + the fix recipes of those same checks as rules-file notes."""
+    seen = seen_classes()
+
+    def per_worker(w):
+        ids = pinned_set(w, versions[w])
+        recipes = list(dict.fromkeys(db.query(f"SELECT fix_recipe FROM checks WHERE id=?", i)[0]["fix_recipe"] for i in ids))
+        fa_hist = defaultdict(list)
+        out, rollbacks = [], []
+        for iss in heldout(w):
+            for s in range(seeds):
+                r = workers.run_issue(w, iss, arm="antibody", seed=s, run_id=run_id, notes=recipes)
+                if r["label"] == "invalid":
+                    out.append(dict(label="invalid", merged=False)); continue
+                files = r["files"]
+                # arm-local rollback monitor (same frozen rule as gate.monitor)
+                flags = run_checks(ids, files)
+                for cid in ids:
+                    fa_hist[cid].append(int(r["label"] == "good" and cid in {c for c, _ in flags}))
+                    last = fa_hist[cid][-config.ROLLBACK_WINDOW:]
+                    if sum(last) >= config.ROLLBACK_MAX_FALSE_ALARMS and cid in ids:
+                        rollbacks.append(cid)
+                ids = [i for i in ids if i not in rollbacks]
+                flags = [(c, x) for c, x in flags if c in ids]
+                if not flags:
+                    out.append(dict(label=r["label"], merged=True, bug_class=r.get("bug_class"), blocked=False, false_block=False))
+                    continue
+                base = db.query("SELECT * FROM changes WHERE id=?", r["change_id"])[0]
+                res = gated_arm_with(run_id, "antibody", w, iss, s, base, ids, flags, recipes)
+                out.append(res)
+        return out, rollbacks
+
+    outcomes = []
+    rb_all = {}
+    with ThreadPoolExecutor(3) as ex:
+        for w, (o, rb) in zip(config.WORKERS, ex.map(per_worker, config.WORKERS)):
+            outcomes += o
+            rb_all[w] = rb
+    n = len(outcomes)
+    merged = [x for x in outcomes if x["merged"]]
+    bugs = [x for x in merged if x["label"] == "buggy"]
+    repeat = [x for x in bugs if x.get("bug_class") in seen]
+    m = {"attempts": n, "merged": len(merged), "bugs_through": len(bugs), "repeat_bugs_through": len(repeat),
+         "repeat_bug_rate": len(repeat) / n, "bug_escape_rate": len(bugs) / n,
+         "good_merged_rate": sum(x["label"] == "good" for x in merged) / n,
+         "blocked": sum(x.get("blocked", False) for x in outcomes),
+         "false_blocks": sum(x.get("false_block", False) for x in outcomes),
+         "arm_rollbacks": sum(len(v) for v in rb_all.values())}
+    m["repeat_bug_rate_lo"], m["repeat_bug_rate_hi"] = gate.wilson(m["repeat_bugs_through"], n)
+    for k, v in m.items():
+        db.insert("metrics", run_id=run_id, arm="antibody", key=k, value=float(v),
+                  detail=json.dumps(rb_all) if k == "arm_rollbacks" else None)
+    print(f"antibody  {m['attempts']:8d} {m['merged']:7d} {m['bugs_through']:9d} {m['repeat_bugs_through']:10d} "
+          f"{m['repeat_bug_rate']:7.3f} [{m['repeat_bug_rate_lo']:.3f}-{m['repeat_bug_rate_hi']:.3f}] "
+          f"{m['blocked']:8d} {m['false_blocks']:9d}   arm-local rollbacks: {rb_all}")
+
+
+def gated_arm_with(run_id, arm, worker, issue, seed, base, ids, flags, notes):
+    false_block = base["label"] == "good"
+    try:
+        prop = workers.propose(worker, issue, notes=notes, feedback=feedback_text(flags), run_id=run_id)
+    except (llm.LLMError, SyntaxError, ValueError):
+        return dict(label="invalid", merged=False, blocked=True, false_block=false_block)
+    lab = workers.reference_label(prop["files"])
+    diff = workers.diff_text(prop["files"])
+    bc = workers.classify_bug(diff, lab["failed_tests"], lab["trace"], run_id) if lab["label"] == "buggy" else None
+    db.insert("changes", run_id=run_id, arm=arm + "-retry", worker=worker, issue_id=issue["id"], seed=seed, diff=diff,
+              label=lab["label"], bug_class=bc, failing_trace=lab["trace"], ref_passed=lab["n_passed"],
+              ref_failed=len(lab["failed_tests"]), files=prop["files"], failed_tests=lab["failed_tests"],
+              blocked_by=json.dumps([c for c, _ in flags]))
+    still = run_checks(ids, prop["files"])
+    return dict(label=lab["label"], merged=not still, blocked=True, bug_class=bc, false_block=false_block)
