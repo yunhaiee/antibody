@@ -120,3 +120,49 @@ def stats() -> dict:
         "verdicts": {r["verdict"]: r["n"] for r in q("SELECT verdict, COUNT(*) n FROM verdicts GROUP BY verdict")},
         "check_sets": {w: gate.current_set(w)[0] for w in config.WORKERS},
     }
+
+
+# ------------------------------------------------------------------ SubQ Snap matcher
+def snap_lookup(failure_text: str, *, worker: str | None = None, threshold: float = 0.5) -> list[dict]:
+    """Rank proven checks with Subquadratic SubQ Snap 1.1 (a decision model): one yes/no
+    question per candidate, 'would this check catch the bug in this failure?'. Logged to
+    llm_calls (provider=subq) and lookups (method=snap)."""
+    import requests  # only the host process uses the network; checks never do
+    t0 = time.monotonic()
+    cands = [r["id"] for r in db.query("SELECT id FROM checks WHERE parent_id IS NULL") if is_proven(r["id"])]
+    if not cands or not config.SUBQ_API_KEY:
+        return []
+    qs = {}
+    for cid in cands:
+        e = evidence(cid)
+        qs[f"c{cid}"] = {
+            "type": "noul",
+            "instructions": f"Is the bug in this failure the same KIND of bug that check #{cid} guards against, so "
+                            f"the check could be adapted to the failing code? Check #{cid}: bug class {e['bug_class']}; "
+                            f"originally for {', '.join(e['signature'].get('apis', []))}; fix recipe: {e['fix_recipe'][:400]}",
+            "criteria": {"true": "same root-cause kind of bug (possibly in a different function or module)",
+                         "false": "a different root cause"},
+        }
+    body = {"model": config.SUBQ_MODEL, "state": failure_text[:20000], "questions": qs}
+    err, out, usage = None, {}, {}
+    try:
+        r = requests.post(f"{config.SUBQ_BASE_URL}/systemone", json=body, timeout=60,
+                          headers={"Authorization": f"Bearer {config.SUBQ_API_KEY}"})
+        r.raise_for_status()
+        out = r.json()
+        usage = out.get("usage", {})
+    except Exception as e:  # noqa: BLE001
+        err = str(e)[:500]
+    latency = int((time.monotonic() - t0) * 1000)
+    db.insert("llm_calls", provider="subq", model=config.SUBQ_MODEL, role="matcher", run_id=f"snap-{worker}",
+              input_tokens=usage.get("input_tokens", 0), output_tokens=usage.get("output_tokens", 0), cached_tokens=0,
+              cache_write_tokens=0, latency_ms=latency, prompt=json.dumps(body)[:20000],
+              output=json.dumps(out)[:20000], error=err)
+    if err:
+        return []
+    probs = sorted(((a["noul"], int(k[1:])) for k, a in out.get("answers", {}).items()), reverse=True)
+    hits = [(p, cid) for p, cid in probs if p >= threshold]
+    db.insert("lookups", worker=worker, signature={"text": failure_text[:300]}, method="snap",
+              matched_check_id=hits[0][1] if hits else None, candidates=len(hits), latency_ms=latency,
+              tokens=usage.get("input_tokens", 0))
+    return [{"score": round(p, 3), **evidence(cid)} for p, cid in hits]
