@@ -130,7 +130,7 @@ each part separately instead of claiming the combination does everything.
 
 **Registry matching** on the 19 real held-out failures: SubQ Snap 1.1 (one yes/no decision per proven check, about 0.4 s and under 1k input tokens per lookup) found the right check family **15/19** times; keyword signatures found it 12/19 times. The reference is the bug classifier's label, which is itself imperfect. (`snap_eval.py`)
 
-**Cost log** (all calls in this run, from `llm_calls`): claude-haiku-5-5: 559 calls, 64,513 input + 644,113 cached input, 465,865 output tokens; claude-opus-5-5: 195 calls, 202,168 input + 186,933 cached input, 334,334 output tokens; subq-snap-1.1: 19 calls, 21,050 input + 0 cached input, 0 output tokens
+**Cost log** (all calls in this run, from `llm_calls`): claude-haiku-5-5: 559 calls, 64,513 input + 644,113 cached input, 465,865 output tokens; claude-opus-5-5: 198 calls, 202,251 input + 188,707 cached input, 334,433 output tokens; subq-snap-1.1: 22 calls, 24,034 input + 0 cached input, 0 output tokens
 <!-- RESULTS:END -->
 
 ## Agents
@@ -151,7 +151,7 @@ Try it in ASI:One: mention the registry's handle and ask, for example:
 
 ```bash
 uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -r requirements.txt
-cp .env.example .env              # ANTHROPIC_API_KEY (required), SUBQ_API_KEY (optional)
+cp .env.example .env              # ANTHROPIC_API_KEY (required), SUBQ_API_KEY, REGISTRY_SEED (optional)
 .venv/bin/python -m pytest tests repos/billing/reference_tests -q   # sandbox + gate + reference suite
 ./pipeline.sh                     # everything below, in order, then writes the README results
 .venv/bin/python learn.py         # workers on train issues -> Writer -> gate -> Registry broadcast
@@ -218,7 +218,7 @@ tests/         test_sandbox.py, test_gate.py
     They still label changes, since they're the oracle.
   - The gate REJECTs any check that names held-out code.
   - All numbers below are from the clean re-run (`pipeline.sh`).
-- **More arms than the plan's four.** `shared_notes` (the antibody recipes as notes, no checks) is a
+- **Six arms, not four.** `shared_notes` (the antibody recipes as notes, no checks) is a
   control, so `antibody` vs `shared_notes` isolates what enforcement adds. `antibody` (checks plus
   their recipes) is the full system. It starts from the check sets as they were before the
   experiment and has its own rollback monitor.

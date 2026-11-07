@@ -81,7 +81,7 @@ ADAPT_SCHEMA = {
 
 
 def adapt(check_id: int, worker: str, run_id: str | None = None) -> dict:
-    """Muse-style adaptation (here: Claude): rewrite a peer's check for `worker`'s area."""
+    """Rewrite a peer's check for `worker`'s area."""
     src = evidence(check_id)
     area = workers.area_source(gate.AREA[worker])
     r = llm.call("adapter", ADAPT_SYSTEM,

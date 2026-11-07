@@ -123,7 +123,7 @@ def md() -> str:
                    "which is itself imperfect. (`snap_eval.py`)\n")
     cost = db.query("SELECT model, COUNT(*) n, SUM(input_tokens) i, SUM(cached_tokens) c, SUM(output_tokens) o "
                     "FROM llm_calls GROUP BY model ORDER BY n DESC")
-    out.append("**Cost log** (all calls today, from `llm_calls`): " + "; ".join(
+    out.append("**Cost log** (all calls in this run, from `llm_calls`): " + "; ".join(
         f"{r['model']}: {r['n']} calls, {(r['i'] or 0):,} input + {(r['c'] or 0):,} cached input, {(r['o'] or 0):,} output tokens"
         for r in cost))
     return "\n".join(out)

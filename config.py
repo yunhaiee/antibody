@@ -47,7 +47,7 @@ SUBQ_API_KEY = os.environ.get("SUBQ_API_KEY", "")
 
 # ---- Fetch.ai ----
 AGENTVERSE_KEY = os.environ.get("AGENTVERSE_KEY", "")
-REGISTRY_SEED = os.environ.get("REGISTRY_SEED", "CHANGE-ME-registry-seed")
+REGISTRY_SEED = os.environ.get("REGISTRY_SEED")  # keep secret (.env): the seed IS the agent identity
 REGISTRY_PORT = int(os.environ.get("REGISTRY_PORT", "8101"))
 WORKER_PORTS = {"A": 8111, "B": 8112, "C": 8113}
 
