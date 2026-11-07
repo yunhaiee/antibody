@@ -122,21 +122,33 @@ def beat3():
 
 
 def beat4():
-    h("4 · Does it get better? Held-out results (labels from the hidden reference suite)")
-    run = db.query("SELECT run_id FROM metrics WHERE key='attempts' ORDER BY id DESC LIMIT 1")
+    h("4 · Does it get better? (labels from the hidden reference suite)")
+    rec = {}
+    for r in db.query("SELECT arm, key, value FROM metrics WHERE run_id='recurrence'"):
+        rec.setdefault(r["arm"], {})[r["key"]] = r["value"]
+    if "recurrence" in rec:
+        r0, rn = rec["recurrence"], rec.get("recurrence-notes", {})
+        print(f"  Same tickets that failed in training, fresh seeds ({int(r0['attempts'])} attempts):")
+        print(f"   no learning      {int(r0['buggy']):>3d}/{int(r0['attempts'])} merge buggy")
+        if rn:
+            print(f"   notes in prompt  {int(rn['buggy']):>3d}/{int(rn['attempts'])} merge buggy")
+        print(f"   checks           {int(r0['buggy']) - int(r0['buggy_blocked']):>3d}/{int(r0['attempts'])} merge buggy "
+              f"({int(r0['buggy_blocked'])} blocked, {int(r0['good_flagged'])} false blocks)\n")
+    run = db.query("SELECT run_id FROM metrics WHERE key='attempts' AND arm='none' ORDER BY id DESC LIMIT 1")
     if not run:
         return print("  (run run_compare.py first)")
     run = run[0]["run_id"]
     m = {}
     for r in db.query("SELECT arm, key, value FROM metrics WHERE run_id=?", run):
         m.setdefault(r["arm"], {})[r["key"]] = r["value"]
+    print("  New code — held-out tickets implementing functions that did not exist during learning:")
     print(f"  run {run}: held-out tickets × {config.HELDOUT_SEEDS} seeds; repeat bug = buggy merged change of a class seen in training")
     print(f"  {'arm':9s} {'attempts':>8s} {'bugs thru':>9s} {'repeat bugs':>11s} {'repeat-bug rate (Wilson80)':>28s} {'good merged':>11s} {'blocked':>7s} {'false blk':>9s}")
-    for arm in ("none", "notes", "shared_notes", "checks", "network", "antibody"):
+    for arm in ("none", "notes", "shared_notes", "checks", "network", "antibody", "antibody+instances"):
         x = m.get(arm)
         if not x:
             continue
-        print(f"  {arm:9s} {int(x['attempts']):8d} {int(x['bugs_through']):9d} {int(x['repeat_bugs_through']):11d} "
+        print(f"  {arm[:9]:9s} {int(x['attempts']):8d} {int(x['bugs_through']):9d} {int(x['repeat_bugs_through']):11d} "
               f"{x['repeat_bug_rate']:10.3f} [{x['repeat_bug_rate_lo']:.3f}–{x['repeat_bug_rate_hi']:.3f}] "
               f"{x['good_merged_rate']:11.2%} {int(x['blocked']):7d} {int(x['false_blocks']):9d}")
     print("  none=no learning · notes=lessons in prompt · checks=own checks gate merges · network=+peers' adapted checks"

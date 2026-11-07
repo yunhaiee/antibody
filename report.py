@@ -8,14 +8,44 @@ import config
 import db
 
 
+def key_findings(m, rec) -> list[str]:
+    f = []
+    if rec:
+        f.append(f"- **The same bug on code the system has learned about.** Re-attempting the "
+                 f"{int(rec['recurrence']['attempts']) // 5} training tickets that failed (5 fresh seeds each, "
+                 f"{int(rec['recurrence']['attempts'])} attempts): **{int(rec['recurrence']['buggy'])}/{int(rec['recurrence']['attempts'])}** "
+                 f"come back buggy with no learning, **{int(rec['recurrence-notes']['buggy'])}/{int(rec['recurrence-notes']['attempts'])}** "
+                 f"with the lessons as prompt notes, and **0** merge buggy with checks "
+                 f"({int(rec['recurrence']['buggy_blocked'])}/{int(rec['recurrence']['buggy'])} blocked, "
+                 f"{int(rec['recurrence']['good_flagged'])} false blocks). A note is advice; a check is a guarantee.")
+    if m:
+        n = int(m["none"]["attempts"])
+        f.append(f"- **New code (held-out tickets that implement functions which did not exist during learning).** "
+                 f"Repeat-class bugs merged: none {int(m['none']['bugs_through'])}/{n}, own notes {int(m['notes']['bugs_through'])}/{n}, "
+                 f"shared recipes as notes {int(m['shared_notes']['bugs_through'])}/{n}, checks only {int(m['checks']['bugs_through'])}/{n}, "
+                 f"network checks {int(m['network']['bugs_through'])}/{n}, checks + recipes {int(m['antibody']['bugs_through'])}/{n}"
+                 + (f", + work-time instances {int(m['antibody+instances']['bugs_through'])}/{n}" if 'antibody+instances' in m else "")
+                 + ". Learned checks never exercise code written later, so on new functions the transferable part is the "
+                 "**recipe**. Instantiating checks for a new function at work time helps a little, but with no oracle it "
+                 + (f"also sent {int(m['antibody+instances'].get('advisory_on_good', 0))} correct changes back for a retry." if 'antibody+instances' in m else "is noisy."))
+    return f
+
+
 def md() -> str:
     out = []
-    run = db.query("SELECT run_id FROM metrics WHERE key='attempts' ORDER BY id DESC LIMIT 1")[0]["run_id"]
+    run = db.query("SELECT run_id FROM metrics WHERE key='attempts' AND arm='none' ORDER BY id DESC LIMIT 1")[0]["run_id"]
     m = {}
     for r in db.query("SELECT arm, key, value FROM metrics WHERE run_id=?", run):
         m.setdefault(r["arm"], {})[r["key"]] = r["value"]
+    rec = {}
+    for r in db.query("SELECT arm, key, value FROM metrics WHERE run_id='recurrence'"):
+        rec.setdefault(r["arm"], {})[r["key"]] = r["value"]
+    out.append("### Key findings\n")
+    out += key_findings(m, rec if "recurrence-notes" in rec else None)
+    out.append("")
     n_tickets = sum(1 for w in config.WORKERS for i in json.load(open(config.ISSUES_DIR / f"{w}.json")) if i["split"] == "heldout")
-    out.append(f"**Held-out experiment**: {n_tickets} held-out tickets × {config.HELDOUT_SEEDS} seeds = "
+    out.append("### Held-out experiment\n")
+    out.append(f"**Setup**: {n_tickets} held-out tickets × {config.HELDOUT_SEEDS} seeds = "
                f"{int(m['none']['attempts'])} attempts per arm, with the same tickets and seeds in every arm. "
                "`none`, `checks` and `network` share the same initial proposals. A *repeat bug* is a buggy "
                "change that merges and belongs to a bug class already seen in training. Labels come from "
@@ -36,6 +66,12 @@ def md() -> str:
                    f"[{x['repeat_bug_rate_lo']:.3f}–{x['repeat_bug_rate_hi']:.3f}] | {x['good_merged_rate']:.0%} | "
                    f"{int(x.get('blocked', 0))} | {int(x.get('false_blocks', 0))} |")
     out.append("")
+    if rec:
+        r0 = rec["recurrence"]
+        out.append(f"**Recurrence on covered code** (not held-out; training tickets that failed, seeds 10–14): "
+                   f"no learning {int(r0['buggy'])}/{int(r0['attempts'])} buggy · notes "
+                   f"{int(rec.get('recurrence-notes', {}).get('buggy', -1))}/{int(rec.get('recurrence-notes', {}).get('attempts', 0))} buggy · "
+                   f"checks block {int(r0['buggy_blocked'])}/{int(r0['buggy'])} buggy, flag {int(r0['good_flagged'])}/{int(r0['good'])} good.\n")
     vrows = db.query("SELECT arm, value, detail FROM metrics WHERE run_id=? AND key='heldout_catch' ORDER BY id", run)
     if vrows:
         seen = {}
