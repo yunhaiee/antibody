@@ -23,6 +23,10 @@ MODEL_BY_ROLE = {"worker": os.environ.get("WORKER_MODEL", "claude-haiku-5-5")}
 NO_FALLBACK_MODELS = ("claude-haiku-5-5",)  # Haiku 5.5 has no server-side fallback
 # Workers see code without docstrings/comments (rules live in the hidden tests).
 WORKER_CONTEXT_STRIP_DOCS = os.environ.get("WORKER_CONTEXT_STRIP_DOCS", "1") == "1"
+# Each worker sees only the file it edits (not the modules it imports): cross-module
+# contracts are invisible to it, as for an agent with a narrow context window.
+WORKER_CONTEXT_OWN_FILE = os.environ.get("WORKER_CONTEXT_OWN_FILE", "1") == "1"
+HELDOUT_SEEDS = 5
 EFFORT = {            # per-role reasoning effort
     "writer": "high",     # turns a failure into a general check + variants + look-alikes
     "adapter": "medium",  # rewrites a peer's check for this worker's module

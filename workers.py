@@ -47,13 +47,16 @@ def stub_function(src: str, fn: str) -> str:
     return ast.unparse(tree) + "\n"
 
 
-def package_source(files: dict[str, str] | None = None, strip: bool | None = None) -> str:
-    """Full billing source, deterministic order -> stable cache prefix."""
+def package_source(files: dict[str, str] | None = None, strip: bool | None = None,
+                   only: str | None = None) -> str:
+    """Billing source (all files, or only `only`), deterministic order -> stable cache prefix."""
     files = files or {}
     strip = config.WORKER_CONTEXT_STRIP_DOCS if strip is None else strip
     parts = []
     for p in sorted((config.BILLING_REPO / "billing").glob("*.py")):
         rel = f"billing/{p.name}"
+        if only and rel != only:
+            continue
         src = files.get(rel, p.read_text())
         parts.append(f"### FILE: {rel}\n```python\n{strip_docs(src) if strip else src}```\n")
     return "<billing_package>\n" + "\n".join(parts) + "</billing_package>"
@@ -122,7 +125,8 @@ def propose(worker: str, issue: dict, *, notes: list[str] | None = None,
         src = (config.BILLING_REPO / issue["file"]).read_text()
         view = {issue["file"]: stub_function(strip_docs(src), issue["function"])}
     r = llm.call("worker", WORKER_SYSTEM.format(worker=worker, extra=extra), user,
-                 context=package_source(view), schema=CHANGE_SCHEMA, run_id=run_id)
+                 context=package_source(view, only=issue["file"] if config.WORKER_CONTEXT_OWN_FILE else None),
+                 schema=CHANGE_SCHEMA, run_id=run_id)
     base = (config.BILLING_REPO / issue["file"]).read_text()
     new = splice(base, issue["function"], r["data"]["function_source"], r["data"]["new_imports"],
                  r["data"].get("module_helpers", ""))
