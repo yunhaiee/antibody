@@ -1,0 +1,202 @@
+[
+  {
+    "id": "B-01",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "issue_invoice",
+    "kind": "decouple",
+    "title": "Decouple: `issue_invoice`",
+    "body": "Normalise `issued_at` to UTC using `datetime.timezone.utc` instead of `ZoneInfo('UTC')`. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "B-02",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "is_overdue",
+    "kind": "refactor",
+    "title": "Refactor: `is_overdue`",
+    "body": "Make the comparison explicit and readable. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "B-03",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "is_overdue",
+    "kind": "extend",
+    "title": "Feature: `is_overdue`",
+    "body": "Add `grace_days: int = 0` with the same meaning as in collections tooling. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "B-04",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "due_date",
+    "kind": "extend",
+    "title": "Feature: `due_date`",
+    "body": "Add `business_days: bool = False`; when True, count only Mon-Fri. Default behaviour unchanged. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "B-05",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "issue_invoice",
+    "kind": "extend",
+    "title": "Feature: `issue_invoice`",
+    "body": "Our CSV importer passes `issued_at` as an ISO-8601 string (e.g. '2026-03-01T09:30:00+09:00'). Accept strings as well as datetimes. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "B-06",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "due_date",
+    "kind": "decouple",
+    "title": "Decouple: `due_date`",
+    "body": "Compute the due date inline so `due_date` no longer calls `local_issue_date`. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "B-07",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "local_issue_date",
+    "kind": "perf",
+    "title": "Performance: `local_issue_date`",
+    "body": "Cache ZoneInfo lookups. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "B-08",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "days_overdue",
+    "kind": "refactor",
+    "title": "Refactor: `days_overdue`",
+    "body": "Simplify the function and give the intermediate values clear names. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "B-09",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "issue_invoice",
+    "kind": "refactor",
+    "title": "Refactor: `issue_invoice`",
+    "body": "Move the input validation to the top in a clear order and simplify the body. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "B-10",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "days_overdue",
+    "kind": "extend",
+    "title": "Feature: `days_overdue`",
+    "body": "Add `grace_days: int = 0`; an invoice is only overdue after the grace period. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "B-11",
+    "worker": "B",
+    "file": "billing/totals.py",
+    "function": "compute_totals",
+    "kind": "perf",
+    "title": "Performance: `compute_totals`",
+    "body": "Make a single pass over the items instead of three separate sums. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "B-12",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "due_date",
+    "kind": "perf",
+    "title": "Performance: `due_date`",
+    "body": "Avoid constructing a ZoneInfo object on every call (cache it). Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "B-13",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "issue_invoice",
+    "kind": "perf",
+    "title": "Performance: `issue_invoice`",
+    "body": "Avoid validating the time zone twice. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "B-14",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "days_overdue",
+    "kind": "decouple",
+    "title": "Decouple: `days_overdue`",
+    "body": "Compute days overdue directly from `issued_at` and `net_days` instead of calling `due_date`. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  },
+  {
+    "id": "B-15",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "local_issue_date",
+    "kind": "extend",
+    "title": "Feature: `local_issue_date`",
+    "body": "Add an optional `tz: str | None` that overrides the customer's time zone. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  },
+  {
+    "id": "B-16",
+    "worker": "B",
+    "file": "billing/totals.py",
+    "function": "compute_totals",
+    "kind": "refactor",
+    "title": "Refactor: `compute_totals`",
+    "body": "Extract the free-shipping rule into a small local helper and simplify the function. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  },
+  {
+    "id": "B-17",
+    "worker": "B",
+    "file": "billing/totals.py",
+    "function": "compute_totals",
+    "kind": "extend",
+    "title": "Feature: `compute_totals`",
+    "body": "Add an optional `coupon` (absolute amount off the order, default '0') applied after line discounts; it must not make the taxable amount negative. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  },
+  {
+    "id": "B-18",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "is_overdue",
+    "kind": "decouple",
+    "title": "Decouple: `is_overdue`",
+    "body": "Compare `now` against the due date directly instead of calling `days_overdue`. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  },
+  {
+    "id": "B-19",
+    "worker": "B",
+    "file": "billing/totals.py",
+    "function": "compute_totals",
+    "kind": "extend",
+    "title": "Feature: `compute_totals`",
+    "body": "Add `shipping_region_surcharge: dict | None` mapping region -> extra shipping amount, applied before the free-shipping check. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  },
+  {
+    "id": "B-20",
+    "worker": "B",
+    "file": "billing/totals.py",
+    "function": "compute_totals",
+    "kind": "decouple",
+    "title": "Decouple: `compute_totals`",
+    "body": "Compute subtotal and discount inline from the items instead of calling `line_subtotal`/`line_discount`. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  }
+]

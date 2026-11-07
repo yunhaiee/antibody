@@ -1,0 +1,202 @@
+[
+  {
+    "id": "A-01",
+    "worker": "A",
+    "file": "billing/tax.py",
+    "function": "tax_breakdown",
+    "kind": "extend",
+    "title": "Feature: `tax_breakdown`",
+    "body": "Add `include_zero: bool = False`; when True, every category of the region appears (0.00 if absent). Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "A-02",
+    "worker": "A",
+    "file": "billing/tax.py",
+    "function": "total_tax",
+    "kind": "perf",
+    "title": "Performance: `total_tax`",
+    "body": "Look up each category's rate once instead of once per line. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "A-03",
+    "worker": "A",
+    "file": "billing/line_items.py",
+    "function": "line_net",
+    "kind": "perf",
+    "title": "Performance: `line_net`",
+    "body": "Avoid computing the subtotal twice. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "A-04",
+    "worker": "A",
+    "file": "billing/tax.py",
+    "function": "tax_breakdown",
+    "kind": "decouple",
+    "title": "Decouple: `tax_breakdown`",
+    "body": "Compute each line's tax inline instead of calling `line_tax`. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "A-05",
+    "worker": "A",
+    "file": "billing/line_items.py",
+    "function": "line_subtotal",
+    "kind": "extend",
+    "title": "Feature: `line_subtotal`",
+    "body": "Add an optional `quantity: int | None = None` that overrides `item.quantity` when given. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "A-06",
+    "worker": "A",
+    "file": "billing/line_items.py",
+    "function": "line_subtotal",
+    "kind": "decouple",
+    "title": "Decouple: `line_subtotal`",
+    "body": "Compute and round the subtotal inline so `line_subtotal` no longer calls `money()`. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "A-07",
+    "worker": "A",
+    "file": "billing/tax.py",
+    "function": "tax_rate",
+    "kind": "extend",
+    "title": "Feature: `tax_rate`",
+    "body": "Make region lookup case-insensitive (`'us-ca'` should work). Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "A-08",
+    "worker": "A",
+    "file": "billing/money.py",
+    "function": "money",
+    "kind": "extend",
+    "title": "Feature: `money`",
+    "body": "Add an optional keyword `cents: bool = False`; when True the value is an integer number of cents (e.g. 1999 -> 19.99). Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "A-09",
+    "worker": "A",
+    "file": "billing/tax.py",
+    "function": "total_tax",
+    "kind": "decouple",
+    "title": "Decouple: `total_tax`",
+    "body": "Sum the line taxes without calling `money_sum`. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "A-10",
+    "worker": "A",
+    "file": "billing/money.py",
+    "function": "money_sum",
+    "kind": "decouple",
+    "title": "Decouple: `money_sum`",
+    "body": "Implement the per-value conversion and the final quantize inline in `money_sum` so it no longer calls `money()`. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "A-11",
+    "worker": "A",
+    "file": "billing/line_items.py",
+    "function": "line_discount",
+    "kind": "refactor",
+    "title": "Refactor: `line_discount`",
+    "body": "Express the percentage as a fraction (`pct / 100`) once and make the computation easier to read. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "A-12",
+    "worker": "A",
+    "file": "billing/line_items.py",
+    "function": "make_line_item",
+    "kind": "refactor",
+    "title": "Refactor: `make_line_item`",
+    "body": "Restructure the validation into a clear sequence of guard clauses with descriptive error messages. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "A-13",
+    "worker": "A",
+    "file": "billing/tax.py",
+    "function": "tax_breakdown",
+    "kind": "refactor",
+    "title": "Refactor: `tax_breakdown`",
+    "body": "Use `collections.defaultdict` to simplify the accumulation. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "A-14",
+    "worker": "A",
+    "file": "billing/line_items.py",
+    "function": "line_discount",
+    "kind": "decouple",
+    "title": "Decouple: `line_discount`",
+    "body": "Compute the discount directly from `unit_price`, `quantity` and `discount_pct` instead of calling `line_subtotal`. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  },
+  {
+    "id": "A-15",
+    "worker": "A",
+    "file": "billing/tax.py",
+    "function": "line_tax",
+    "kind": "extend",
+    "title": "Feature: `line_tax`",
+    "body": "Add an optional `rate: Decimal | None = None` that overrides the table rate when provided. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  },
+  {
+    "id": "A-16",
+    "worker": "A",
+    "file": "billing/money.py",
+    "function": "money_sum",
+    "kind": "extend",
+    "title": "Feature: `money_sum`",
+    "body": "Add an optional keyword `start` (default zero) that is added to the total. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  },
+  {
+    "id": "A-17",
+    "worker": "A",
+    "file": "billing/money.py",
+    "function": "money_sum",
+    "kind": "perf",
+    "title": "Performance: `money_sum`",
+    "body": "Use the built-in `sum()` instead of the explicit loop. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  },
+  {
+    "id": "A-18",
+    "worker": "A",
+    "file": "billing/tax.py",
+    "function": "line_tax",
+    "kind": "decouple",
+    "title": "Decouple: `line_tax`",
+    "body": "Compute the taxable base from the item's fields directly so `tax.py` no longer depends on `line_net`. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  },
+  {
+    "id": "A-19",
+    "worker": "A",
+    "file": "billing/line_items.py",
+    "function": "make_line_item",
+    "kind": "extend",
+    "title": "Feature: `make_line_item`",
+    "body": "Callers in the mobile app send `discount_pct` as a float such as 12.5. Accept floats for `discount_pct` as well as str/Decimal. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  },
+  {
+    "id": "A-20",
+    "worker": "A",
+    "file": "billing/line_items.py",
+    "function": "line_net",
+    "kind": "decouple",
+    "title": "Decouple: `line_net`",
+    "body": "Compute the net amount directly from the item's fields in one expression instead of calling `line_subtotal` and `line_discount`. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  }
+]

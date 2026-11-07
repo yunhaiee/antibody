@@ -5,7 +5,8 @@ Layers:
     banned builtins (open/exec/eval/__import__ ...), dunder escapes (__subclasses__, __globals__ ...).
  2. Fresh subprocess (`python -I`), 10 s wall-clock timeout, CPU rlimit, RLIMIT_FSIZE=0.
  3. A PEP 578 audit hook (cannot be removed once installed) that blocks any network
-    connect/bind/DNS, any open() for writing, process spawning, and file deletion/rename.
+    connect/bind/DNS, any open() for writing, process spawning, and file deletion/rename —
+    except inside a throwaway per-run scratch dir (Hypothesis needs it), which is deleted after.
  4. The repo under test is a read-only copy (files chmod 0444) in a throwaway temp dir.
 
 A check is a pytest module that imports from `billing.*`. Exit 0 = change looks fine,
@@ -30,13 +31,13 @@ ALLOWED_DUNDERS = {"__init__", "__name__", "__doc__", "__eq__", "__repr__"}
 
 BOOTSTRAP = r'''
 import sys, resource
-resource.setrlimit(resource.RLIMIT_FSIZE, (0, 0))
+resource.setrlimit(resource.RLIMIT_FSIZE, (1 << 20, 1 << 20))  # 1 MB, scratch dir only
 try:
     resource.setrlimit(resource.RLIMIT_CPU, (__CPU__, __CPU__ + 1))
 except Exception:
     pass
 sys.dont_write_bytecode = True
-REPO, CHECK = sys.argv[1], sys.argv[2]
+REPO, CHECK, SCRATCH = sys.argv[1], sys.argv[2], sys.argv[3]
 sys.path[:0] = [REPO, __RT__]
 
 def _violation(msg):
@@ -52,14 +53,16 @@ _ALLOW_SOCKET = ()
 def _hook(event, args):
     if event == "open":
         path, mode, flags = (list(args) + [None, None, None])[:3]
-        if path == "/dev/null":
-            return
+        if isinstance(path, int) or path == "/dev/null" or str(path).startswith(SCRATCH):
+            return  # fds were already vetted when opened by path
         if isinstance(mode, str) and any(c in mode for c in "wax+"):
             _violation(f"file write {path!r}")
         if isinstance(flags, int) and flags & _WRITE_FLAGS and path not in ("/dev/null",):
             _violation(f"file write {path!r}")
+    elif event in ("os.mkdir", "os.rename", "os.replace", "os.remove", "os.unlink") and str(args[0]).startswith(SCRATCH):
+        return  # throwaway scratch dir (hypothesis storage); deleted after the run
     elif event.startswith(_BLOCK_PREFIX):
-        _violation(event)
+        _violation(f"{event} {args[0] if args else ''!r}")
 
 import hypothesis  # noqa: E402  (import before hook so its own setup is unaffected)
 hypothesis.settings.register_profile("sandbox", database=None, deadline=None, max_examples=60,
@@ -164,7 +167,8 @@ def cleanup(root: Path):
     shutil.rmtree(root, ignore_errors=True)
 
 
-def run_check(check_code: str, repo_dir: Path, timeout: float | None = None) -> SandboxResult:
+def run_check(check_code: str, repo_dir: Path, timeout: float | None = None,
+              stop_first: bool = True) -> SandboxResult:
     """Run one check against one repo snapshot. Never raises for check misbehaviour."""
     timeout = timeout or config.SANDBOX_TIMEOUT_S
     ok, why = static_screen(check_code)
@@ -182,18 +186,24 @@ def run_check(check_code: str, repo_dir: Path, timeout: float | None = None) -> 
         check_file.parent.mkdir()
         check_file.write_text(check_code)
         boot = work / "boot.py"
-        boot.write_text(BOOTSTRAP.replace("__CPU__", str(int(timeout) + 1)).replace("__RT__", repr(str(rt))))
+        boot_src = BOOTSTRAP.replace("__CPU__", str(int(timeout) + 1)).replace("__RT__", repr(str(rt)))
+        if not stop_first:
+            boot_src = boot_src.replace('"-q", "-x",', '"-q", "-rf",')
+        boot.write_text(boot_src)
         _make_readonly(snap)
         for p in (rt, check_file.parent):
             _make_readonly(p)
 
         t0 = time.monotonic()
         try:
+            scratch = work / "scratch"
+            scratch.mkdir()
             proc = subprocess.run(
-                [sys.executable, "-I", str(boot), str(snap), str(check_file)],
+                [sys.executable, "-I", str(boot), str(snap), str(check_file), str(scratch)],
                 cwd=str(check_file.parent), capture_output=True, text=True, timeout=timeout,
                 env={"PATH": "/usr/bin:/bin", "PYTHONHASHSEED": "0", "PYTHONDONTWRITEBYTECODE": "1",
-                     "HOME": str(work), "TMPDIR": str(work / "nonexistent")},
+                     "HOME": str(work), "TMPDIR": str(work / "nonexistent"),
+                     "HYPOTHESIS_STORAGE_DIRECTORY": str(work / "scratch" / ".hypothesis")},
             )
         except subprocess.TimeoutExpired as e:
             out = (e.stdout or b"").decode() if isinstance(e.stdout, bytes) else (e.stdout or "")

@@ -1,0 +1,202 @@
+[
+  {
+    "id": "C-01",
+    "worker": "C",
+    "file": "billing/reports.py",
+    "function": "aging_bucket",
+    "kind": "refactor",
+    "title": "Refactor: `aging_bucket`",
+    "body": "Make the bucket edges table-driven. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "C-02",
+    "worker": "C",
+    "file": "billing/reports.py",
+    "function": "paginate",
+    "kind": "extend",
+    "title": "Feature: `paginate`",
+    "body": "Add `max_page_size: int | None = None`; when set, larger page sizes are clamped to it. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "C-03",
+    "worker": "C",
+    "file": "billing/reports.py",
+    "function": "revenue_by_month",
+    "kind": "refactor",
+    "title": "Refactor: `revenue_by_month`",
+    "body": "Simplify the month-key computation. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "C-04",
+    "worker": "C",
+    "file": "billing/reports.py",
+    "function": "invoice_page",
+    "kind": "refactor",
+    "title": "Refactor: `invoice_page`",
+    "body": "Make the ordering rule obvious from the code. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "C-05",
+    "worker": "C",
+    "file": "billing/reports.py",
+    "function": "invoice_page",
+    "kind": "extend",
+    "title": "Feature: `invoice_page`",
+    "body": "Add `newest_first: bool = True`; when False, oldest first (ties still by invoice_id ascending). Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "C-06",
+    "worker": "C",
+    "file": "billing/reports.py",
+    "function": "paginate",
+    "kind": "decouple",
+    "title": "Decouple: `paginate`",
+    "body": "Compute `total_pages` with integer arithmetic so `reports.py` no longer needs `math.ceil`. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "C-07",
+    "worker": "C",
+    "file": "billing/reports.py",
+    "function": "paginate",
+    "kind": "extend",
+    "title": "Feature: `paginate`",
+    "body": "Accept any iterable (including generators) for `seq`. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "C-08",
+    "worker": "C",
+    "file": "billing/reports.py",
+    "function": "revenue_by_month",
+    "kind": "decouple",
+    "title": "Decouple: `revenue_by_month`",
+    "body": "Accumulate the monthly totals inline without calling `money()`. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "C-09",
+    "worker": "C",
+    "file": "billing/reports.py",
+    "function": "aging_report",
+    "kind": "decouple",
+    "title": "Decouple: `aging_report`",
+    "body": "Sum each bucket without calling `money_sum`. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "C-10",
+    "worker": "C",
+    "file": "billing/reports.py",
+    "function": "aging_report",
+    "kind": "perf",
+    "title": "Performance: `aging_report`",
+    "body": "Accumulate bucket totals in a single pass without building intermediate lists. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "C-11",
+    "worker": "C",
+    "file": "billing/reports.py",
+    "function": "revenue_by_month",
+    "kind": "extend",
+    "title": "Feature: `revenue_by_month`",
+    "body": "Add `customer_id: str | None = None` to restrict the report to one customer. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "C-12",
+    "worker": "C",
+    "file": "billing/reports.py",
+    "function": "revenue_by_month",
+    "kind": "extend",
+    "title": "Feature: `revenue_by_month`",
+    "body": "Add `region: str | None = None` to restrict the report to one region. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "C-13",
+    "worker": "C",
+    "file": "billing/reports.py",
+    "function": "aging_bucket",
+    "kind": "extend",
+    "title": "Feature: `aging_bucket`",
+    "body": "Add `edges: tuple = (30, 60, 90)` so finance can configure the bucket edges; default behaviour unchanged. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "C-14",
+    "worker": "C",
+    "file": "billing/reports.py",
+    "function": "aging_report",
+    "kind": "extend",
+    "title": "Feature: `aging_report`",
+    "body": "Add `only_overdue: bool = False`; when True, omit the 'current' bucket from the result. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  },
+  {
+    "id": "C-15",
+    "worker": "C",
+    "file": "billing/reports.py",
+    "function": "paginate",
+    "kind": "perf",
+    "title": "Performance: `paginate`",
+    "body": "Avoid copying the sequence when it is already a list. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  },
+  {
+    "id": "C-16",
+    "worker": "C",
+    "file": "billing/reports.py",
+    "function": "invoice_page",
+    "kind": "decouple",
+    "title": "Decouple: `invoice_page`",
+    "body": "Do the slicing inline instead of calling `paginate`, returning the same Page. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  },
+  {
+    "id": "C-17",
+    "worker": "C",
+    "file": "billing/reports.py",
+    "function": "revenue_by_month",
+    "kind": "perf",
+    "title": "Performance: `revenue_by_month`",
+    "body": "Accumulate with a dict.get-free approach (defaultdict) and round once per month at the end. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  },
+  {
+    "id": "C-18",
+    "worker": "C",
+    "file": "billing/reports.py",
+    "function": "paginate",
+    "kind": "refactor",
+    "title": "Refactor: `paginate`",
+    "body": "Simplify the slicing and has_next logic. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  },
+  {
+    "id": "C-19",
+    "worker": "C",
+    "file": "billing/reports.py",
+    "function": "aging_report",
+    "kind": "refactor",
+    "title": "Refactor: `aging_report`",
+    "body": "Simplify the function. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  },
+  {
+    "id": "C-20",
+    "worker": "C",
+    "file": "billing/reports.py",
+    "function": "invoice_page",
+    "kind": "perf",
+    "title": "Performance: `invoice_page`",
+    "body": "Sort once with a single composite key instead of two sorts. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  }
+]
