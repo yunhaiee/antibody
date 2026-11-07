@@ -37,7 +37,8 @@ WORKER_PORTS = {"A": 8111, "B": 8112, "C": 8113}
 SANDBOX_TIMEOUT_S = 10
 BANNED_IMPORTS = ("os", "subprocess", "socket", "shutil", "requests",
                   "urllib", "http", "ctypes", "multiprocessing", "importlib", "pathlib")
-BANNED_CALLS = ("open", "exec", "eval", "compile", "__import__", "breakpoint", "input")
+BANNED_CALLS = ("open", "exec", "eval", "compile", "__import__", "breakpoint", "input",
+                "getattr", "setattr", "delattr", "globals", "vars", "locals")
 
 # ---- Adoption gate (FROZEN) ----
 GATE_N_VARIANTS = 8
