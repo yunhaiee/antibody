@@ -132,13 +132,15 @@ def beat4():
         m.setdefault(r["arm"], {})[r["key"]] = r["value"]
     print(f"  run {run}: held-out tickets × {config.HELDOUT_SEEDS} seeds; repeat bug = buggy merged change of a class seen in training")
     print(f"  {'arm':9s} {'attempts':>8s} {'bugs thru':>9s} {'repeat bugs':>11s} {'repeat-bug rate (Wilson80)':>28s} {'good merged':>11s} {'blocked':>7s} {'false blk':>9s}")
-    for arm in ("none", "notes", "checks", "network"):
+    for arm in ("none", "notes", "checks", "network", "antibody"):
         x = m.get(arm)
         if not x:
             continue
         print(f"  {arm:9s} {int(x['attempts']):8d} {int(x['bugs_through']):9d} {int(x['repeat_bugs_through']):11d} "
               f"{x['repeat_bug_rate']:10.3f} [{x['repeat_bug_rate_lo']:.3f}–{x['repeat_bug_rate_hi']:.3f}] "
               f"{x['good_merged_rate']:11.2%} {int(x['blocked']):7d} {int(x['false_blocks']):9d}")
+    print("  none=no learning · notes=lessons in prompt · checks=own checks gate merges · network=+peers' adapted checks"
+          " · antibody=network checks + their fix recipes (the shipped system)")
     vers = [r for r in db.query("SELECT arm, value, detail FROM metrics WHERE run_id=? AND key='heldout_catch' ORDER BY id", run)]
     if vers:
         print("\n  Held-out buggy changes caught per check-set version (same 'none' proposals):")

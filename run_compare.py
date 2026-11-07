@@ -204,20 +204,6 @@ def print_tables(run_id, rows, seeds, tok, secs):
                   f"   {r['cft']:>14,} tok {r['cf_minutes']:5.1f} min {r['cf_verdict']}")
 
 
-if __name__ == "__main__":
-    rid = sys.argv[1] if len(sys.argv) > 1 else "compare"
-    if "--antibody" in sys.argv:
-        vers = {"A": 3, "B": 4, "C": 5} if len(sys.argv) < 4 else json.loads(sys.argv[3])
-        run_antibody_arm(rid, config.HELDOUT_SEEDS, vers)
-    elif "--versions" in sys.argv:
-        print("\n=== Held-out effect per check-set version (shared 'none' proposals) ===")
-        print(f"{'worker':6s} {'ver':>3s} {'caught buggy':>12s} {'flagged good':>12s}  reason")
-        for w, v, reason, c, nb, fa, ng, _ in version_table():
-            print(f"{w:6s} v{v:<2d} {c:>5d}/{nb:<6d} {fa:>5d}/{ng:<6d}  {reason}")
-    else:
-        main(rid, config.HELDOUT_SEEDS)
-
-
 # ------------------------------------------------------------------ full system arm
 def pinned_set(worker: str, version: int) -> list[int]:
     return json.loads(db.query("SELECT check_ids FROM check_sets WHERE worker=? AND version=?", worker, version)[0]["check_ids"])
@@ -296,3 +282,17 @@ def gated_arm_with(run_id, arm, worker, issue, seed, base, ids, flags, notes):
               blocked_by=json.dumps([c for c, _ in flags]))
     still = run_checks(ids, prop["files"])
     return dict(label=lab["label"], merged=not still, blocked=True, bug_class=bc, false_block=false_block)
+
+
+if __name__ == "__main__":
+    rid = sys.argv[1] if len(sys.argv) > 1 else "compare"
+    if "--antibody" in sys.argv:
+        vers = {"A": 3, "B": 4, "C": 5} if len(sys.argv) < 4 else json.loads(sys.argv[3])
+        run_antibody_arm(rid, config.HELDOUT_SEEDS, vers)
+    elif "--versions" in sys.argv:
+        print("\n=== Held-out effect per check-set version (shared 'none' proposals) ===")
+        print(f"{'worker':6s} {'ver':>3s} {'caught buggy':>12s} {'flagged good':>12s}  reason")
+        for w, v, reason, c, nb, fa, ng, _ in version_table():
+            print(f"{w:6s} v{v:<2d} {c:>5d}/{nb:<6d} {fa:>5d}/{ng:<6d}  {reason}")
+    else:
+        main(rid, config.HELDOUT_SEEDS)
