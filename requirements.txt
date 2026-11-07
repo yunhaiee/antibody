@@ -1,0 +1,6 @@
+uagents>=0.25.5
+openai>=1.40
+pytest
+hypothesis
+python-dotenv
+tzdata
