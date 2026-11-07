@@ -331,9 +331,42 @@ def gated_arm_with(run_id, arm, worker, issue, seed, base, ids, flags, notes):
     return dict(label=lab["label"], merged=not still, blocked=True, bug_class=bc, false_block=false_block)
 
 
+def recurrence(run_id: str = "recurrence", seeds=range(10, 15)):
+    """NOT held-out: re-attempt the training tickets that produced bugs (fresh seeds) and
+    measure whether the same bug comes back and whether the adopted checks (pre-experiment
+    versions) block it. Shows what checks are for: guarding code they cover."""
+    vers = json.loads((config.ROOT / "runs" / "pre_experiment_versions.json").read_text())
+    bug_issues = {(r["worker"], r["issue_id"]) for r in db.query(
+        "SELECT DISTINCT worker, issue_id FROM changes WHERE run_id='train' AND label='buggy'")}
+    jobs = [(w, next(i for i in workers.load_issues(w) if i["id"] == iid), s) for (w, iid) in sorted(bug_issues) for s in seeds]
+
+    def one(j):
+        w, iss, s = j
+        r = workers.run_issue(w, iss, arm="none", seed=s, run_id=run_id)
+        if r["label"] == "invalid":
+            return w, iss["id"], "invalid", False, None
+        flags = run_checks(pinned_set(w, vers[w]), r["files"])
+        return w, iss["id"], r["label"], bool(flags), r.get("bug_class")
+    with ThreadPoolExecutor(8) as ex:
+        res = list(ex.map(one, jobs))
+    n = len(res)
+    buggy = [x for x in res if x[2] == "buggy"]
+    caught = [x for x in buggy if x[3]]
+    false = [x for x in res if x[2] == "good" and x[3]]
+    for k, v in {"attempts": n, "buggy": len(buggy), "buggy_blocked": len(caught), "good_flagged": len(false),
+                 "good": sum(x[2] == "good" for x in res)}.items():
+        db.insert("metrics", run_id=run_id, arm="recurrence", key=k, value=float(v))
+    print(f"recurrence (train tickets that failed, fresh seeds): {n} attempts, {len(buggy)} buggy, "
+          f"{len(caught)} blocked by adopted checks, {len(false)}/{sum(x[2] == 'good' for x in res)} good flagged")
+    for x in res:
+        print("  ", x)
+
+
 if __name__ == "__main__":
     rid = sys.argv[1] if len(sys.argv) > 1 else "compare"
-    if "--antibody" in sys.argv:
+    if "--recurrence" in sys.argv:
+        recurrence()
+    elif "--antibody" in sys.argv:
         vers = json.loads((config.ROOT / "runs" / "pre_experiment_versions.json").read_text())
         run_antibody_arm(rid, config.HELDOUT_SEEDS, vers, enforce="--no-enforce" not in sys.argv,
                          instances="--instances" in sys.argv)
