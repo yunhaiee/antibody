@@ -70,10 +70,11 @@ def beat1():
 
 def beat2():
     h("2 · Not every check gets in: REJECT, NOT_APPLICABLE, ROLLBACK")
-    rej = db.query("SELECT v.*, c.bug_class, c.origin_worker FROM verdicts v JOIN checks c ON c.id=v.check_id "
-                   "WHERE verdict='REJECT' ORDER BY v.id LIMIT 2")
+    rej = db.query("SELECT v.*, c.bug_class, c.origin_worker, c.kind FROM verdicts v JOIN checks c ON c.id=v.check_id "
+                   "WHERE verdict='REJECT' ORDER BY (c.kind LIKE 'ablation%'), v.id LIMIT 2")
     for v in rej:
-        print(f"  REJECT  check #{v['check_id']} ({v['bug_class']}, from worker {v['origin_worker']}) for worker {v['worker']}:")
+        what = "single-round draft, no CEGIS (ablation)" if v["kind"].startswith("ablation") else v["kind"]
+        print(f"  REJECT  check #{v['check_id']} ({v['bug_class']}, {what}, from worker {v['origin_worker']}) for worker {v['worker']}:")
         print("   " + verdict_line(v))
         print(f"   reason: {v['reason']}")
     if not rej:

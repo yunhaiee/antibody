@@ -126,7 +126,8 @@ def answer_learned() -> str:
     for w in config.WORKERS:
         hist = db.query("SELECT version, reason FROM check_sets WHERE worker=? ORDER BY version", w)
         lines.append(f"- Worker {w}: v{gate.current_set(w)[0]} — " + "; ".join(f"v{h['version']}: {h['reason']}" for h in hist))
-    vc = db.query("SELECT verdict, COUNT(*) n FROM verdicts GROUP BY verdict")
+    vc = db.query("SELECT verdict, COUNT(*) n FROM verdicts v JOIN checks c ON c.id=v.check_id "
+                  "WHERE COALESCE(c.parent_id, 0) != -1 GROUP BY verdict")
     lines.append("\n**Verdicts:** " + ", ".join(f"{r['verdict']} {r['n']}" for r in vc))
     le = db.query("SELECT worker, bug_class, tokens_in+tokens_out t, minutes, cf_tokens_in+cf_tokens_out cft, cf_minutes "
                   "FROM learn_events WHERE path='registry'")

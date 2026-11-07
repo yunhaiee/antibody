@@ -102,7 +102,7 @@ def _fn_of(files: dict) -> str:
     return f"# {rel}\n" + txt
 
 
-def write_check(change_id: int, run_id: str | None = None, log=print) -> dict:
+def write_check(change_id: int, run_id: str | None = None, log=print, max_rounds: int | None = None) -> dict:
     """Full Writer pipeline for one buggy change. Returns the stored check row + evidence."""
     ch = db.query("SELECT * FROM changes WHERE id=?", change_id)[0]
     ch["files"] = json.loads(ch["files"])
@@ -123,7 +123,8 @@ def write_check(change_id: int, run_id: str | None = None, log=print) -> dict:
     log(f"[writer] CEGIS material confirmed by reference suite: {len(variants)} variants, {len(lookalikes)} look-alikes")
 
     code, history = draft["check_code"], []
-    for rnd in range(1, config.CEGIS_MAX_ROUNDS + 1):
+    max_rounds = max_rounds or config.CEGIS_MAX_ROUNDS
+    for rnd in range(1, max_rounds + 1):
         res = gate.run_many(code, [ch["files"], {}] + variants + lookalikes)
         orig_flag, fixed_pass = res[0].flagged, res[1].status == "pass"
         v_res, l_res = res[2:2 + len(variants)], res[2 + len(variants):]
@@ -138,7 +139,7 @@ def write_check(change_id: int, run_id: str | None = None, log=print) -> dict:
         log(f"[cegis r{rnd}] original {'CAUGHT' if orig_flag else 'missed'} | fixed {'pass' if fixed_pass else 'FAIL'} | "
             f"variants {h['variants_caught']}/{h['variants_total']} | look-alikes flagged {h['lookalikes_flagged']}/{h['lookalikes_total']}")
         done = (static_ok and orig_flag and fixed_pass and not missed and not false_alarms)
-        if done or rnd == config.CEGIS_MAX_ROUNDS:
+        if done or rnd == max_rounds:
             break
         feedback = []
         if not static_ok:

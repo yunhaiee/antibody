@@ -117,7 +117,9 @@ def stats() -> dict:
     return {
         "checks": q("SELECT COUNT(*) n FROM checks WHERE parent_id IS NULL")[0]["n"],
         "adapted": q("SELECT COUNT(*) n FROM checks WHERE parent_id IS NOT NULL")[0]["n"],
-        "verdicts": {r["verdict"]: r["n"] for r in q("SELECT verdict, COUNT(*) n FROM verdicts GROUP BY verdict")},
+        "verdicts": {r["verdict"]: r["n"] for r in q(
+            "SELECT verdict, COUNT(*) n FROM verdicts v JOIN checks c ON c.id=v.check_id "
+            "WHERE COALESCE(c.parent_id, 0) != -1 GROUP BY verdict")},
         "check_sets": {w: gate.current_set(w)[0] for w in config.WORKERS},
     }
 
