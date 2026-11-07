@@ -20,6 +20,19 @@ BUG_CLASSES = ["float_money", "rounding", "tax_base", "timezone", "boundary_off_
                "input_mutation", "validation", "ordering", "type_contract", "other"]
 
 _REF_TESTS = (config.BILLING_REPO / "reference_tests" / "test_reference.py").read_text()
+_HELDOUT_MARK = "# ================= functions that reuse the team's conventions"
+# Reference tests for held-out functions: they still label every change (the oracle), but
+# their names and failure lines are never shown to a model.
+HELDOUT_TESTS = {n.name for n in ast.parse(_REF_TESTS[_REF_TESTS.index(_HELDOUT_MARK):]).body
+                 if isinstance(n, ast.FunctionDef) and n.name.startswith("test_")}
+
+
+def visible_failure(failed_tests: list[str], trace: str) -> tuple[list[str], str]:
+    """What a model may see of a failure: training-era tests only, no held-out symbols."""
+    tests = [t for t in failed_tests if t not in HELDOUT_TESTS]
+    lines = [l for l in (trace or "").splitlines()
+             if not any(sym in l for sym in config.HELDOUT_SYMBOLS) and not any(t in l for t in HELDOUT_TESTS)]
+    return tests, "\n".join(lines)
 
 
 def load_issues(worker: str) -> list[dict]:
@@ -36,6 +49,21 @@ def strip_docs(src: str) -> str:
                 and isinstance(node.body[0].value.value, str):
             node.body = node.body[1:] or [ast.Pass()]
     return ast.unparse(tree) + "\n"
+
+
+def training_view(src: str) -> str:
+    """The code as it existed during training: held-out symbols (functions that held-out
+    tickets ask workers to implement, and their new types) do not exist yet. Every model
+    context is built from this view, so nothing learned can reference held-out code."""
+    tree = ast.parse(src)
+    tree.body = [n for n in tree.body if not (isinstance(n, (ast.FunctionDef, ast.ClassDef))
+                                              and n.name in config.HELDOUT_SYMBOLS)]
+    return ast.unparse(tree) + "\n"
+
+
+def area_source(files) -> str:
+    """Training-era source of some files, for Writer/adapter/seeder contexts."""
+    return "\n".join(f"### FILE: {f}\n```python\n{training_view((config.BILLING_REPO / f).read_text())}```" for f in files)
 
 
 def stub_function(src: str, fn: str) -> str:
@@ -57,7 +85,7 @@ def package_source(files: dict[str, str] | None = None, strip: bool | None = Non
         rel = f"billing/{p.name}"
         if only and rel != only:
             continue
-        src = files.get(rel, p.read_text())
+        src = files.get(rel, training_view(p.read_text()))
         parts.append(f"### FILE: {rel}\n```python\n{strip_docs(src) if strip else src}```\n")
     return "<billing_package>\n" + "\n".join(parts) + "</billing_package>"
 
@@ -123,7 +151,11 @@ def propose(worker: str, issue: dict, *, notes: list[str] | None = None,
     view = None
     if issue["kind"] == "implement":
         src = (config.BILLING_REPO / issue["file"]).read_text()
-        view = {issue["file"]: stub_function(strip_docs(src), issue["function"])}
+        tv = ast.parse(training_view(src))  # other held-out code stays hidden; the target is a stub
+        tgt = next(n for n in ast.parse(src).body if isinstance(n, ast.FunctionDef) and n.name == issue["function"])
+        if not any(isinstance(n, ast.FunctionDef) and n.name == issue["function"] for n in tv.body):
+            tv.body.append(tgt)
+        view = {issue["file"]: stub_function(strip_docs(ast.unparse(tv)), issue["function"])}
     r = llm.call("worker", WORKER_SYSTEM.format(worker=worker, extra=extra), user,
                  context=package_source(view, only=issue["file"] if config.WORKER_CONTEXT_OWN_FILE else None),
                  schema=CHANGE_SCHEMA, run_id=run_id)
@@ -155,7 +187,11 @@ def diff_text(files: dict[str, str]) -> str:
     import difflib
     out = []
     for rel, new in files.items():
-        old = (config.BILLING_REPO / rel).read_text()
+        old = training_view((config.BILLING_REPO / rel).read_text())
+        try:
+            new = training_view(new)
+        except SyntaxError:
+            pass
         out += difflib.unified_diff(old.splitlines(True), new.splitlines(True), f"a/{rel}", f"b/{rel}")
     return "".join(out)
 
@@ -192,6 +228,7 @@ BUG_CLASS_GUIDE = """- float_money: binary float used for money / Decimal contra
 
 
 def classify_bug(diff: str, failed_tests: list[str], trace: str, run_id=None) -> str:
+    failed_tests, trace = visible_failure(failed_tests, trace)
     r = llm.call("router",
                  "Classify the ROOT CAUSE of a regression in a Python billing service into exactly one bug class:\n"
                  + BUG_CLASS_GUIDE,

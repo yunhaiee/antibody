@@ -81,7 +81,7 @@ def seed_variants(worker: str, bug_class: str, want: int = config.GATE_N_VARIANT
                      worker, bug_class)[0]["n"]
     if tried >= 3 * want:  # already tried hard; class can't be seeded here
         return [json.loads(r["files"]) for r in have]
-    src = "\n".join(f"### FILE: {f}\n```python\n{(config.BILLING_REPO / f).read_text()}```" for f in AREA[worker])
+    src = workers.area_source(AREA[worker])
     r = llm.call("adapter", SEEDER_SYSTEM,
                  f"Bug class: {bug_class} ({dict(l.split(': ', 1) for l in workers.BUG_CLASS_GUIDE.replace('- ', '').splitlines()).get(bug_class, '')})\n"
                  f"Write {want + 4} distinct variants, spread over the functions below where this bug class can occur. "
@@ -119,7 +119,7 @@ def synthetic_good(worker: str, need: int, run_id=None) -> list[dict]:
     have = db.query("SELECT files FROM gate_material WHERE worker=? AND kind='good' AND ref_label='good' ORDER BY id", worker)
     if len(have) >= need:
         return [json.loads(r["files"]) for r in have[:need]]
-    src = "\n".join(f"### FILE: {f}\n```python\n{(config.BILLING_REPO / f).read_text()}```" for f in AREA[worker])
+    src = workers.area_source(AREA[worker])
     r = llm.call("adapter", GOOD_SYSTEM, f"Write {need + 6} rewrites spread across the functions below.",
                  context=src, schema=SEED_SCHEMA, run_id=run_id)
     cands = []
@@ -180,6 +180,9 @@ def evaluate(check_id: int, worker: str, *, original: dict | None = None, run_id
     ok, why = sandbox.static_screen(code)
     if not ok:
         return _record(check_id, worker, "REJECT", reason=f"static screen: {why}", adopt=False, record=record)
+    leaked = [s for s in config.HELDOUT_SYMBOLS if s in code]
+    if leaked:  # safety net: learned checks may only reference code that existed at training time
+        return _record(check_id, worker, "REJECT", reason=f"references held-out code {leaked}", adopt=False, record=record)
 
     variants = seed_variants(worker, bug_class, run_id=run_id)
     goods = known_good(worker)

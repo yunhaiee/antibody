@@ -163,27 +163,32 @@ def main(run_id: str, seeds: int):
 
 
 def version_table():
-    """Held-out catch/false-alarm per check-set version, on the shared 'none' proposals."""
+    """Held-out catch/false-alarm per check-set version, on the shared 'none' proposals.
+    Each check runs once per proposal (cached), then versions are evaluated from the cache."""
     out = []
-    run_id = db.query("SELECT run_id FROM metrics ORDER BY id DESC LIMIT 1")[0]["run_id"]
+    run_id = db.query("SELECT run_id FROM metrics WHERE key='attempts' ORDER BY id DESC LIMIT 1")[0]["run_id"]
     for w in config.WORKERS:
         props = db.query("SELECT files, label FROM changes WHERE run_id=? AND arm='none' AND worker=? AND files IS NOT NULL",
                          run_id, w)
-        for v in db.query("SELECT version, check_ids, reason FROM check_sets WHERE worker=? ORDER BY version", w):
+        files = [json.loads(p["files"]) for p in props]
+        versions = db.query("SELECT version, check_ids, reason FROM check_sets WHERE worker=? ORDER BY version", w)
+        union = sorted({c for v in versions for c in json.loads(v["check_ids"])})
+        flagged = {}
+        for cid in union:
+            code = db.query("SELECT code FROM checks WHERE id=?", cid)[0]["code"]
+            flagged[cid] = [r.status != "pass" for r in gate.run_many(code, files)]
+        for v in [{"version": 0, "check_ids": "[]", "reason": "no checks"}] + versions:
             ids = json.loads(v["check_ids"])
             caught = fa = nb = ng = 0
-            for p in props:
-                flagged = bool(run_checks(ids, json.loads(p["files"]))) if ids else False
+            for k, p in enumerate(props):
+                f = any(flagged[c][k] for c in ids)
                 if p["label"] == "buggy":
-                    nb += 1
-                    caught += flagged
+                    nb += 1; caught += f
                 else:
-                    ng += 1
-                    fa += flagged
-            good_pass = (ng - fa + 0) / (nb + ng) if nb + ng else 0
-            out.append((w, v["version"], v["reason"], caught, nb, fa, ng, (ng - fa) / (nb + ng - caught + fa) if (nb + ng) else 0))
+                    ng += 1; fa += f
+            out.append((w, v["version"], v["reason"], caught, nb, fa, ng, None))
             db.insert("metrics", run_id=run_id, arm=f"{w}-v{v['version']}", key="heldout_catch", value=caught,
-                      detail=json.dumps({"buggy": nb, "false_alarms": fa, "good": ng}))
+                      detail=json.dumps({"buggy": nb, "false_alarms": fa, "good": ng, "reason": v["reason"]}))
     return out
 
 
@@ -209,10 +214,11 @@ def pinned_set(worker: str, version: int) -> list[int]:
     return json.loads(db.query("SELECT check_ids FROM check_sets WHERE worker=? AND version=?", worker, version)[0]["check_ids"])
 
 
-def run_antibody_arm(run_id: str, seeds: int, versions: dict):
+def run_antibody_arm(run_id: str, seeds: int, versions: dict, enforce: bool = True):
     """antibody = network checks (pinned to the pre-experiment check-set versions, with an
     arm-local rollback monitor) + the fix recipes of those same checks as rules-file notes."""
     seen = seen_classes()
+    arm_name = "antibody" if enforce else "shared_notes"
 
     def per_worker(w):
         ids = pinned_set(w, versions[w])
@@ -221,9 +227,12 @@ def run_antibody_arm(run_id: str, seeds: int, versions: dict):
         out, rollbacks = [], []
         for iss in heldout(w):
             for s in range(seeds):
-                r = workers.run_issue(w, iss, arm="antibody", seed=s, run_id=run_id, notes=recipes)
+                r = workers.run_issue(w, iss, arm=arm_name, seed=s, run_id=run_id, notes=recipes)
                 if r["label"] == "invalid":
                     out.append(dict(label="invalid", merged=False)); continue
+                if not enforce:
+                    out.append(dict(label=r["label"], merged=True, bug_class=r.get("bug_class")))
+                    continue
                 files = r["files"]
                 # arm-local rollback monitor (same frozen rule as gate.monitor)
                 flags = run_checks(ids, files)
@@ -260,9 +269,9 @@ def run_antibody_arm(run_id: str, seeds: int, versions: dict):
          "arm_rollbacks": sum(len(v) for v in rb_all.values())}
     m["repeat_bug_rate_lo"], m["repeat_bug_rate_hi"] = gate.wilson(m["repeat_bugs_through"], n)
     for k, v in m.items():
-        db.insert("metrics", run_id=run_id, arm="antibody", key=k, value=float(v),
+        db.insert("metrics", run_id=run_id, arm=arm_name, key=k, value=float(v),
                   detail=json.dumps(rb_all) if k == "arm_rollbacks" else None)
-    print(f"antibody  {m['attempts']:8d} {m['merged']:7d} {m['bugs_through']:9d} {m['repeat_bugs_through']:10d} "
+    print(f"{arm_name:9s} {m['attempts']:8d} {m['merged']:7d} {m['bugs_through']:9d} {m['repeat_bugs_through']:10d} "
           f"{m['repeat_bug_rate']:7.3f} [{m['repeat_bug_rate_lo']:.3f}-{m['repeat_bug_rate_hi']:.3f}] "
           f"{m['blocked']:8d} {m['false_blocks']:9d}   arm-local rollbacks: {rb_all}")
 
@@ -287,8 +296,8 @@ def gated_arm_with(run_id, arm, worker, issue, seed, base, ids, flags, notes):
 if __name__ == "__main__":
     rid = sys.argv[1] if len(sys.argv) > 1 else "compare"
     if "--antibody" in sys.argv:
-        vers = {"A": 3, "B": 4, "C": 5} if len(sys.argv) < 4 else json.loads(sys.argv[3])
-        run_antibody_arm(rid, config.HELDOUT_SEEDS, vers)
+        vers = json.loads((config.ROOT / "runs" / "pre_experiment_versions.json").read_text())
+        run_antibody_arm(rid, config.HELDOUT_SEEDS, vers, enforce="--no-enforce" not in sys.argv)
     elif "--versions" in sys.argv:
         print("\n=== Held-out effect per check-set version (shared 'none' proposals) ===")
         print(f"{'worker':6s} {'ver':>3s} {'caught buggy':>12s} {'flagged good':>12s}  reason")

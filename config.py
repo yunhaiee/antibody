@@ -27,6 +27,11 @@ WORKER_CONTEXT_STRIP_DOCS = os.environ.get("WORKER_CONTEXT_STRIP_DOCS", "1") == 
 # contracts are invisible to it, as for an agent with a narrow context window.
 WORKER_CONTEXT_OWN_FILE = os.environ.get("WORKER_CONTEXT_OWN_FILE", "1") == "1"
 HELDOUT_SEEDS = 5
+# Symbols that only held-out tickets introduce. Hidden from EVERY model context during
+# learning (Writer, adapter, seeder, workers): learned checks cannot reference them.
+HELDOUT_SYMBOLS = ("parse_line_item", "bundle_price", "tax_inclusive_split", "shipping_cost",
+                   "issue_credit_note", "reminder_date", "CreditNote", "customer_statement",
+                   "top_customers", "overdue_invoices")
 EFFORT = {            # per-role reasoning effort
     "writer": "high",     # turns a failure into a general check + variants + look-alikes
     "adapter": "medium",  # rewrites a peer's check for this worker's module

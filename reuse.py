@@ -40,7 +40,12 @@ def run(run_id: str, limit: int = 3):
         sig = sigmod.build(ch["failing_trace"], json.loads(ch["failed_tests"] or "[]"), [], ch["bug_class"])
         m = [x for x in registry_core.lookup(sig, worker=ch["worker"], method="keyword")
              if x["origin_worker"] != ch["worker"] and x["bug_class"] == ch["bug_class"]]
-        if m and (ch["worker"], ch["bug_class"]) not in {(c[0]["worker"], c[0]["bug_class"]) for c in cases}:
+        done = {r["change_id"] for r in db.query("SELECT change_id FROM reuse_runs WHERE run_id=?", run_id)}
+        done_issues = {r["issue_id"] for r in db.query(
+            "SELECT c.issue_id FROM reuse_runs r JOIN changes c ON c.id=r.change_id WHERE r.run_id=?", run_id)}
+        if ch["id"] in done or ch["issue_id"] in done_issues:
+            continue
+        if m and (ch["worker"], ch["issue_id"]) not in {(c[0]["worker"], c[0]["issue_id"]) for c in cases}:
             cases.append((ch, sig, m[0]))
     print(f"[reuse] {len(cases)} held-out failures whose bug class another worker already solved")
     for ch, sig, m in cases[:limit]:

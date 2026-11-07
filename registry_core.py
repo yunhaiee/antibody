@@ -12,6 +12,7 @@ import gate
 import llm
 import sandbox
 import signature as sigmod
+import workers
 
 
 def is_proven(check_id: int) -> bool:
@@ -74,7 +75,7 @@ ADAPT_SCHEMA = {
 def adapt(check_id: int, worker: str, run_id: str | None = None) -> dict:
     """Muse-style adaptation (here: Claude): rewrite a peer's check for `worker`'s area."""
     src = evidence(check_id)
-    area = "\n".join(f"### FILE: {f}\n```python\n{(config.BILLING_REPO / f).read_text()}```" for f in gate.AREA[worker])
+    area = workers.area_source(gate.AREA[worker])
     r = llm.call("adapter", ADAPT_SYSTEM,
                  f"Bug class: {src['bug_class']}\nFix recipe: {src['fix_recipe']}\n"
                  f"Original check (written for worker {src['origin_worker']}):\n```python\n{src['code']}\n```\n\n"

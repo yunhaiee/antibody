@@ -82,7 +82,7 @@ def _files_from(items, allowed):
 def cegis_material(change: dict, bug_class: str, run_id=None) -> tuple[list, list]:
     """Writer-side variants (8) and look-alikes (20), confirmed by the reference suite."""
     area = gate.AREA[change["worker"]]
-    src = "\n".join(f"### FILE: {f}\n```python\n{(config.BILLING_REPO / f).read_text()}```" for f in area)
+    src = workers.area_source(area)
     r = llm.call("adapter", MATERIAL_SYSTEM,
                  f"Bug class: {bug_class}\nRegression diff:\n{change['diff']}\n\n"
                  f"Write {config.GATE_N_VARIANTS + 3} VARIANTS and {config.GATE_N_GOOD + 4} LOOKALIKES.",
@@ -108,11 +108,12 @@ def write_check(change_id: int, run_id: str | None = None, log=print, max_rounds
     ch["files"] = json.loads(ch["files"])
     ch["failed_tests"] = json.loads(ch["failed_tests"] or "[]")
     issue = next(i for i in workers.load_issues(ch["worker"]) if i["id"] == ch["issue_id"])
-    context = workers.package_source(strip=False)  # long context: the whole package, cached
+    context = workers.package_source(strip=False)  # long context: the whole (training-era) package, cached
 
+    vis_tests, vis_trace = workers.visible_failure(ch["failed_tests"], ch["failing_trace"])
     base_prompt = (f"Worker {ch['worker']} ticket {issue['id']}: {issue['title']}\n{issue['body']}\n\n"
-                   f"Regression diff:\n{ch['diff']}\n\nFailing CI output:\n{ch['failing_trace']}\n"
-                   f"Failing test names: {ch['failed_tests']}")
+                   f"Regression diff:\n{ch['diff']}\n\nFailing CI output:\n{vis_trace}\n"
+                   f"Failing test names: {vis_tests}")
     log(f"[writer] change {change_id} ({ch['worker']} {ch['issue_id']}, class={ch['bug_class']}): drafting check…")
     with ThreadPoolExecutor(2) as ex:
         f_check = ex.submit(llm.call, "writer", WRITER_SYSTEM, base_prompt, context=context,
@@ -148,6 +149,7 @@ def write_check(change_id: int, run_id: str | None = None, log=print, max_rounds
             feedback.append(f"It does NOT fail on the original buggy change (status {res[0].status}). Output:\n{res[0].output[-1200:]}")
         if not fixed_pass:
             feedback.append(f"It FAILS on the correct code. Output:\n{res[1].output[-1500:]}")
+        # (check outputs only mention what the check itself references: training-era code)
         for m in missed[:3]:
             feedback.append(f"MISSED this buggy variant (must fail):\n{_fn_of(m)[-2500:]}")
         for la, r in false_alarms[:3]:
