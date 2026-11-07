@@ -34,6 +34,12 @@ CREATE TABLE IF NOT EXISTS monitor_runs (
 CREATE TABLE IF NOT EXISTS lookups (
   id INTEGER PRIMARY KEY, ts REAL, worker TEXT, signature TEXT, method TEXT,
   matched_check_id INT, candidates INT, latency_ms INT, tokens INT);
+CREATE TABLE IF NOT EXISTS notes (
+  id INTEGER PRIMARY KEY, ts REAL, worker TEXT, change_id INT, bug_class TEXT, text TEXT);
+CREATE TABLE IF NOT EXISTS learn_events (
+  id INTEGER PRIMARY KEY, ts REAL, worker TEXT, change_id INT, bug_class TEXT, path TEXT,
+  check_id INT, matched_check_id INT, verdict TEXT, tokens_in INT, tokens_out INT, minutes REAL,
+  cf_tokens_in INT, cf_tokens_out INT, cf_minutes REAL, cf_verdict TEXT);
 CREATE TABLE IF NOT EXISTS metrics (
   id INTEGER PRIMARY KEY, ts REAL, run_id TEXT, arm TEXT, key TEXT, value REAL, detail TEXT);
 """

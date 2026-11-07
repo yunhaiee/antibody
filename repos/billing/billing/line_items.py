@@ -44,3 +44,30 @@ def line_discount(item: LineItem) -> Decimal:
 
 def line_net(item: LineItem) -> Decimal:
     return money(line_subtotal(item) - line_discount(item))
+
+
+def parse_line_item(row: dict) -> LineItem:
+    """Build a LineItem from an imported row (CSV/JSON). quantity may be an int or a
+    digit string; unit_price must be str/int/Decimal (floats are rejected). Missing
+    optional fields take make_line_item's defaults. Invalid rows raise ValueError
+    (TypeError for float money)."""
+    for key in ("sku", "unit_price", "quantity"):
+        if key not in row:
+            raise ValueError(f"missing field {key!r}")
+    qty = row["quantity"]
+    if isinstance(qty, str):
+        if not qty.strip().isdigit():
+            raise ValueError("quantity must be a positive integer")
+        qty = int(qty.strip())
+    return make_line_item(row["sku"], row.get("description", ""), row["unit_price"], qty,
+                          row.get("discount_pct", "0"), row.get("tax_category", "standard"))
+
+
+def bundle_price(items, bundle_discount_pct="0") -> Decimal:
+    """Price of a bundle: the sum of the items' net amounts, minus an extra bundle
+    discount (percent of that sum), rounded half-up to cents."""
+    pct = Decimal(str(bundle_discount_pct))
+    if pct < 0 or pct > 100:
+        raise ValueError("bundle_discount_pct must be in [0, 100]")
+    net = sum((line_net(i) for i in items), Decimal("0"))
+    return money(net - money(net * pct / Decimal(100)))

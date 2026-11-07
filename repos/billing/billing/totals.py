@@ -34,3 +34,16 @@ def compute_totals(items, region: str, shipping="0") -> Totals:
         ship = ZERO
     total = money(subtotal - discount + tax + ship)
     return Totals(subtotal, discount, tax, ship, total)
+
+
+def shipping_cost(items, region: str, base_shipping="0") -> Decimal:
+    """Shipping charged for an order: waived when the discounted amount reaches the
+    free-shipping threshold (the same rule compute_totals applies)."""
+    items = list(items)
+    if not items:
+        raise ValueError("an order needs at least one line item")
+    ship = money(base_shipping)
+    if ship < 0:
+        raise ValueError("shipping must be >= 0")
+    discounted = money_sum(line_subtotal(i) for i in items) - money_sum(line_discount(i) for i in items)
+    return ZERO if discounted >= FREE_SHIPPING_THRESHOLD else ship

@@ -3,14 +3,24 @@
     "id": "B-01",
     "worker": "B",
     "file": "billing/invoices.py",
-    "function": "local_issue_date",
-    "kind": "extend",
-    "title": "Feature: `local_issue_date`",
-    "body": "Add an optional `tz: str | None` that overrides the customer's time zone. Existing behaviour and all current callers must keep working.",
+    "function": "days_overdue",
+    "kind": "refactor",
+    "title": "Refactor: `days_overdue`",
+    "body": "Simplify the function and give the intermediate values clear names. Existing behaviour and all current callers must keep working.",
     "split": "train"
   },
   {
     "id": "B-02",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "due_date",
+    "kind": "implement",
+    "title": "Implement: `due_date`",
+    "body": "Spec: Due date: issue date plus the payment terms (net days).",
+    "split": "train"
+  },
+  {
+    "id": "B-03",
     "worker": "B",
     "file": "billing/totals.py",
     "function": "compute_totals",
@@ -20,67 +30,7 @@
     "split": "train"
   },
   {
-    "id": "B-03",
-    "worker": "B",
-    "file": "billing/invoices.py",
-    "function": "days_overdue",
-    "kind": "extend",
-    "title": "Feature: `days_overdue`",
-    "body": "Add `grace_days: int = 0`; an invoice is only overdue after the grace period. Existing behaviour and all current callers must keep working.",
-    "split": "train"
-  },
-  {
     "id": "B-04",
-    "worker": "B",
-    "file": "billing/invoices.py",
-    "function": "days_overdue",
-    "kind": "refactor",
-    "title": "Refactor: `days_overdue`",
-    "body": "Simplify the function and give the intermediate values clear names. Existing behaviour and all current callers must keep working.",
-    "split": "train"
-  },
-  {
-    "id": "B-05",
-    "worker": "B",
-    "file": "billing/invoices.py",
-    "function": "local_issue_date",
-    "kind": "perf",
-    "title": "Performance: `local_issue_date`",
-    "body": "Cache ZoneInfo lookups. Existing behaviour and all current callers must keep working.",
-    "split": "train"
-  },
-  {
-    "id": "B-06",
-    "worker": "B",
-    "file": "billing/invoices.py",
-    "function": "is_overdue",
-    "kind": "implement",
-    "title": "Implement: `is_overdue`",
-    "body": "Spec: Whether the invoice is overdue at `now`.",
-    "split": "train"
-  },
-  {
-    "id": "B-07",
-    "worker": "B",
-    "file": "billing/invoices.py",
-    "function": "due_date",
-    "kind": "extend",
-    "title": "Feature: `due_date`",
-    "body": "Add `business_days: bool = False`; when True, count only Mon-Fri. Default behaviour unchanged. Existing behaviour and all current callers must keep working.",
-    "split": "train"
-  },
-  {
-    "id": "B-08",
-    "worker": "B",
-    "file": "billing/totals.py",
-    "function": "compute_totals",
-    "kind": "decouple",
-    "title": "Decouple: `compute_totals`",
-    "body": "Compute subtotal and discount inline from the items instead of calling `line_subtotal`/`line_discount`. Existing behaviour and all current callers must keep working.",
-    "split": "train"
-  },
-  {
-    "id": "B-09",
     "worker": "B",
     "file": "billing/invoices.py",
     "function": "days_overdue",
@@ -90,7 +40,17 @@
     "split": "train"
   },
   {
-    "id": "B-10",
+    "id": "B-05",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "days_overdue",
+    "kind": "extend",
+    "title": "Feature: `days_overdue`",
+    "body": "Add `grace_days: int = 0`; an invoice is only overdue after the grace period. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "B-06",
     "worker": "B",
     "file": "billing/invoices.py",
     "function": "issue_invoice",
@@ -100,27 +60,7 @@
     "split": "train"
   },
   {
-    "id": "B-11",
-    "worker": "B",
-    "file": "billing/invoices.py",
-    "function": "days_overdue",
-    "kind": "decouple",
-    "title": "Decouple: `days_overdue`",
-    "body": "Compute days overdue directly from `issued_at` and `net_days` instead of calling `due_date`. Existing behaviour and all current callers must keep working.",
-    "split": "train"
-  },
-  {
-    "id": "B-12",
-    "worker": "B",
-    "file": "billing/invoices.py",
-    "function": "issue_invoice",
-    "kind": "perf",
-    "title": "Performance: `issue_invoice`",
-    "body": "Avoid validating the time zone twice. Existing behaviour and all current callers must keep working.",
-    "split": "train"
-  },
-  {
-    "id": "B-13",
+    "id": "B-07",
     "worker": "B",
     "file": "billing/invoices.py",
     "function": "local_issue_date",
@@ -130,73 +70,133 @@
     "split": "train"
   },
   {
-    "id": "B-14",
-    "worker": "B",
-    "file": "billing/invoices.py",
-    "function": "is_overdue",
-    "kind": "refactor",
-    "title": "Refactor: `is_overdue`",
-    "body": "Make the comparison explicit and readable. Existing behaviour and all current callers must keep working.",
-    "split": "heldout"
-  },
-  {
-    "id": "B-15",
-    "worker": "B",
-    "file": "billing/invoices.py",
-    "function": "due_date",
-    "kind": "implement",
-    "title": "Implement: `due_date`",
-    "body": "Spec: Due date: issue date plus the payment terms (net days).",
-    "split": "heldout"
-  },
-  {
-    "id": "B-16",
-    "worker": "B",
-    "file": "billing/invoices.py",
-    "function": "due_date",
-    "kind": "decouple",
-    "title": "Decouple: `due_date`",
-    "body": "Compute the due date inline so `due_date` no longer calls `local_issue_date`. Existing behaviour and all current callers must keep working.",
-    "split": "heldout"
-  },
-  {
-    "id": "B-17",
+    "id": "B-08",
     "worker": "B",
     "file": "billing/totals.py",
     "function": "compute_totals",
     "kind": "perf",
     "title": "Performance: `compute_totals`",
     "body": "Make a single pass over the items instead of three separate sums. Existing behaviour and all current callers must keep working.",
-    "split": "heldout"
+    "split": "train"
   },
   {
-    "id": "B-18",
-    "worker": "B",
-    "file": "billing/invoices.py",
-    "function": "is_overdue",
-    "kind": "decouple",
-    "title": "Decouple: `is_overdue`",
-    "body": "Compare `now` against the due date directly instead of calling `days_overdue`. Existing behaviour and all current callers must keep working.",
-    "split": "heldout"
-  },
-  {
-    "id": "B-19",
-    "worker": "B",
-    "file": "billing/invoices.py",
-    "function": "is_overdue",
-    "kind": "extend",
-    "title": "Feature: `is_overdue`",
-    "body": "Add `grace_days: int = 0` with the same meaning as in collections tooling. Existing behaviour and all current callers must keep working.",
-    "split": "heldout"
-  },
-  {
-    "id": "B-20",
+    "id": "B-09",
     "worker": "B",
     "file": "billing/invoices.py",
     "function": "issue_invoice",
     "kind": "refactor",
     "title": "Refactor: `issue_invoice`",
     "body": "Move the input validation to the top in a clear order and simplify the body. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "B-10",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "due_date",
+    "kind": "decouple",
+    "title": "Decouple: `due_date`",
+    "body": "Compute the due date inline so `due_date` no longer calls `local_issue_date`. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "B-11",
+    "worker": "B",
+    "file": "billing/totals.py",
+    "function": "compute_totals",
+    "kind": "decouple",
+    "title": "Decouple: `compute_totals`",
+    "body": "Compute subtotal and discount inline from the items instead of calling `line_subtotal`/`line_discount`. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "B-12",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "is_overdue",
+    "kind": "implement",
+    "title": "Implement: `is_overdue`",
+    "body": "Spec: Whether the invoice is overdue at `now`.",
+    "split": "train"
+  },
+  {
+    "id": "B-13",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "is_overdue",
+    "kind": "refactor",
+    "title": "Refactor: `is_overdue`",
+    "body": "Make the comparison explicit and readable. Existing behaviour and all current callers must keep working.",
+    "split": "train"
+  },
+  {
+    "id": "B-14",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "issue_invoice",
+    "kind": "perf",
+    "title": "Performance: `issue_invoice`",
+    "body": "Avoid validating the time zone twice. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  },
+  {
+    "id": "B-15",
+    "worker": "B",
+    "file": "billing/totals.py",
+    "function": "shipping_cost",
+    "kind": "implement",
+    "title": "Implement: `shipping_cost`",
+    "body": "Spec: Shipping to charge for an order (free over $100).",
+    "split": "heldout"
+  },
+  {
+    "id": "B-16",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "issue_credit_note",
+    "kind": "implement",
+    "title": "Implement: `issue_credit_note`",
+    "body": "Spec: Issue a credit note against an invoice.",
+    "split": "heldout"
+  },
+  {
+    "id": "B-17",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "local_issue_date",
+    "kind": "extend",
+    "title": "Feature: `local_issue_date`",
+    "body": "Add an optional `tz: str | None` that overrides the customer's time zone. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  },
+  {
+    "id": "B-18",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "reminder_date",
+    "kind": "implement",
+    "title": "Implement: `reminder_date`",
+    "body": "Spec: Date on which to send the customer a payment reminder, `days_before` the due date.",
+    "split": "heldout"
+  },
+  {
+    "id": "B-19",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "due_date",
+    "kind": "extend",
+    "title": "Feature: `due_date`",
+    "body": "Add `business_days: bool = False`; when True, count only Mon-Fri. Default behaviour unchanged. Existing behaviour and all current callers must keep working.",
+    "split": "heldout"
+  },
+  {
+    "id": "B-20",
+    "worker": "B",
+    "file": "billing/invoices.py",
+    "function": "is_overdue",
+    "kind": "extend",
+    "title": "Feature: `is_overdue`",
+    "body": "Add `grace_days: int = 0` with the same meaning as in collections tooling. Existing behaviour and all current callers must keep working.",
     "split": "heldout"
   }
 ]

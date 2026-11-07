@@ -3,8 +3,9 @@
 Every issue asks a worker to change ONE existing function while keeping its observable
 behaviour. Correctness is decided only by the hidden reference suite. Issues are
 realistic tickets (refactor / decouple from a helper / extend with an optional param /
-speed up); none of them instructs a bug. The order is a deterministic shuffle; the last
-third of each queue is held out for run_compare.py.
+speed up) or "implement this function from a one-line spec"; none instructs a bug.
+Train (13/worker): the original implement tickets + edits. Held-out (7/worker): three NEW
+functions that reuse conventions seen in training + edits. Deterministic shuffle (seed 7).
 """
 import json
 import random
@@ -163,6 +164,20 @@ IMPLEMENT = [
     ("C", "billing/reports.py", "aging_report", "Outstanding amount per aging bucket at `now`."),
 ]
 
+# Held-out "implement" tickets: new functions that reuse conventions already exercised in
+# training (tie-breaks, discounted-amount thresholds, aware datetimes, validation, rounding).
+HELDOUT_IMPLEMENT = [
+    ("A", "billing/line_items.py", "parse_line_item", "Build a LineItem from an imported CSV/JSON row."),
+    ("A", "billing/line_items.py", "bundle_price", "Price of a bundle of items with an extra bundle discount percentage."),
+    ("A", "billing/tax.py", "tax_inclusive_split", "Split a tax-inclusive price into (net, tax)."),
+    ("B", "billing/totals.py", "shipping_cost", "Shipping to charge for an order (free over $100)."),
+    ("B", "billing/invoices.py", "issue_credit_note", "Issue a credit note against an invoice."),
+    ("B", "billing/invoices.py", "reminder_date", "Date on which to send the customer a payment reminder, `days_before` the due date."),
+    ("C", "billing/reports.py", "customer_statement", "One page of a customer's invoices for their account statement, newest first."),
+    ("C", "billing/reports.py", "top_customers", "The n customers with the highest invoiced total, as (customer_id, total) pairs."),
+    ("C", "billing/reports.py", "overdue_invoices", "Invoices that are overdue at `now`, most overdue first."),
+]
+
 KIND_PREFIX = {
     "implement": "Implement",
     "decouple": "Decouple",
@@ -176,10 +191,15 @@ def build(seed: int = 7):
     rng = random.Random(seed)
     for w in "ABC":
         impl = [(w2, f, fn, "implement", spec) for (w2, f, fn, spec) in IMPLEMENT if w2 == w]
+        held_impl = [(w2, f, fn, "implement", spec) for (w2, f, fn, spec) in HELDOUT_IMPLEMENT if w2 == w]
         edits = [s for s in SPECS if s[0] == w]
         rng.shuffle(edits)
-        rows = impl + edits[: 20 - len(impl)]
-        rng.shuffle(rows)
+        n_train_edits = 13 - len(impl)
+        train = impl + edits[:n_train_edits]
+        held = held_impl + edits[n_train_edits:n_train_edits + 7 - len(held_impl)]
+        rng.shuffle(train)
+        rng.shuffle(held)
+        rows = train + held
         issues = []
         for i, (_, file, fn, kind, ask) in enumerate(rows, 1):
             body = (f"Spec: {ask}" if kind == "implement"
@@ -193,9 +213,9 @@ def build(seed: int = 7):
                 "title": f"{KIND_PREFIX[kind]}: `{fn}`",
                 "body": body,
             })
-        n_hold = round(len(issues) / 3)
+        n_hold = len(held)
         for k, iss in enumerate(issues):
-            iss["split"] = "heldout" if k >= len(issues) - n_hold else "train"
+            iss["split"] = "heldout" if k >= len(train) else "train"
         (HERE / f"{w}.json").write_text(json.dumps(issues, indent=2) + "\n")
         print(w, len(issues), "issues,", n_hold, "held out")
 

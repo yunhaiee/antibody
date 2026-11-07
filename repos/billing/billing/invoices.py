@@ -49,3 +49,33 @@ def days_overdue(inv: Invoice, now: datetime) -> int:
 
 def is_overdue(inv: Invoice, now: datetime) -> bool:
     return days_overdue(inv, now) > 0
+
+
+@dataclass(frozen=True)
+class CreditNote:
+    note_id: str
+    invoice_id: str
+    amount: object
+    issued_at: datetime
+
+
+def issue_credit_note(note_id: str, inv: Invoice, amount, issued_at: datetime) -> CreditNote:
+    """Credit (part of) an invoice. issued_at must be timezone-aware and is stored in UTC;
+    it may not precede the invoice. amount must be > 0 and <= the invoice total."""
+    from .money import money
+    if issued_at.tzinfo is None or issued_at.utcoffset() is None:
+        raise ValueError("issued_at must be timezone-aware")
+    issued_at = issued_at.astimezone(ZoneInfo("UTC"))
+    if issued_at < inv.issued_at:
+        raise ValueError("credit note cannot precede its invoice")
+    amt = money(amount)
+    if amt <= 0 or amt > inv.totals.total:
+        raise ValueError("amount must be in (0, invoice total]")
+    return CreditNote(note_id, inv.invoice_id, amt, issued_at)
+
+
+def reminder_date(inv: Invoice, days_before: int = 3) -> date:
+    """Customer-local calendar date on which to send a payment reminder."""
+    if days_before < 0:
+        raise ValueError("days_before must be >= 0")
+    return due_date(inv) - timedelta(days=days_before)

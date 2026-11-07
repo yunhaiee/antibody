@@ -33,3 +33,11 @@ def tax_breakdown(items, region: str) -> dict:
     for i in items:
         out[i.tax_category] = money(out.get(i.tax_category, Decimal("0")) + line_tax(i, region))
     return out
+
+
+def tax_inclusive_split(gross, region: str, category: str = "standard") -> tuple:
+    """Split a tax-inclusive price into (net, tax). net is rounded half-up to cents and
+    tax = gross - net, so net + tax == gross exactly."""
+    g = money(gross)
+    net = money(g / (Decimal(1) + tax_rate(region, category)))
+    return net, money(g - net)

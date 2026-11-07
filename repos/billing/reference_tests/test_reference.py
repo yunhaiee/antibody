@@ -225,3 +225,115 @@ def test_prop_pagination_partitions(n, size):
     pages = max(1, -(-n // size))
     got = [x for p in range(1, pages + 1) for x in paginate(seq, p, size).items]
     assert got == seq
+
+
+# ================= functions that reuse the team's conventions =================
+from billing.line_items import parse_line_item, bundle_price
+from billing.tax import tax_inclusive_split
+from billing.totals import shipping_cost
+from billing.invoices import issue_credit_note, reminder_date
+from billing.reports import customer_statement, top_customers, overdue_invoices
+
+
+def test_parse_line_item_ok():
+    li = parse_line_item({"sku": "S", "unit_price": "19.99", "quantity": "3", "discount_pct": "10"})
+    assert line_net(li) == D("53.97") and li.description == "" and li.tax_category == "standard"
+
+@pytest.mark.parametrize("row", [{"unit_price": "1", "quantity": 1}, {"sku": "S", "quantity": 1},
+                                 {"sku": "S", "unit_price": "1", "quantity": "two"},
+                                 {"sku": "S", "unit_price": "1", "quantity": "0"},
+                                 {"sku": "S", "unit_price": "1", "quantity": "-2"},
+                                 {"sku": "S", "unit_price": "1", "quantity": 1, "tax_category": "luxury"}])
+def test_parse_line_item_rejects(row):
+    with pytest.raises(ValueError):
+        parse_line_item(row)
+
+def test_parse_line_item_rejects_float_money():
+    with pytest.raises(TypeError):
+        parse_line_item({"sku": "S", "unit_price": 0.1, "quantity": 1})
+
+def test_bundle_price():
+    items = [item("10.00", 1, "10"), item("5.05", 1)]
+    assert bundle_price(items) == D("14.05")
+    assert bundle_price(items, "10") == D("12.64")   # 14.05 - 1.41 (1.405 rounded half-up)
+    assert isinstance(bundle_price(items, "10"), D)
+    with pytest.raises(ValueError):
+        bundle_price(items, "101")
+
+def test_tax_inclusive_split_exact():
+    net, tax = tax_inclusive_split("10.00", "DE")
+    assert (net, tax) == (D("8.40"), D("1.60")) and net + tax == D("10.00")
+    net, tax = tax_inclusive_split("1.00", "US-CA")
+    assert net + tax == D("1.00") and net == D("0.93")
+
+@settings(max_examples=60, deadline=None)
+@given(cents, st.sampled_from(["US-CA", "US-NY", "DE", "JP"]))
+def test_prop_tax_inclusive_sums(gross, region):
+    net, tax = tax_inclusive_split(gross, region)
+    assert net + tax == money(gross) and isinstance(net, D) and isinstance(tax, D)
+
+def test_shipping_cost_threshold_on_discounted_amount():
+    assert shipping_cost([item("100.00")], "US-NY", "7.00") == D("0.00")
+    assert shipping_cost([item("100.00", 1, "1")], "US-NY", "7.00") == D("7.00")
+    assert shipping_cost([item("99.99")], "US-NY", "7.00") == D("7.00")
+    with pytest.raises(ValueError):
+        shipping_cost([], "US-NY", "7.00")
+    with pytest.raises(ValueError):
+        shipping_cost([item()], "US-NY", "-1")
+
+def test_shipping_cost_matches_compute_totals():
+    for rows in ([("60.00", 1, "0"), ("40.00", 1, "0")], [("120.00", 1, "20")], [("33.33", 3, "0")]):
+        items = [item(p, q, d, sku=f"S{k}") for k, (p, q, d) in enumerate(rows)]
+        assert shipping_cost(items, "DE", "4.90") == compute_totals(items, "DE", "4.90").shipping
+
+def test_credit_note_ok_and_utc():
+    i = inv(at=datetime(2026, 1, 15, 12, tzinfo=UTC))
+    kst = timezone(timedelta(hours=9))
+    n = issue_credit_note("CN1", i, "5.00", datetime(2026, 1, 20, 8, tzinfo=kst))
+    assert n.amount == D("5.00") and n.issued_at.utcoffset() == timedelta(0) and n.issued_at.hour == 23
+
+def test_credit_note_rejects():
+    i = inv(at=datetime(2026, 1, 15, 12, tzinfo=UTC))
+    with pytest.raises(ValueError):
+        issue_credit_note("CN", i, "1.00", datetime(2026, 1, 20, 8))          # naive
+    with pytest.raises(ValueError):
+        issue_credit_note("CN", i, "1.00", datetime(2026, 1, 15, 11, tzinfo=UTC))  # before invoice
+    with pytest.raises(ValueError):
+        issue_credit_note("CN", i, "0", datetime(2026, 1, 20, tzinfo=UTC))
+    with pytest.raises(ValueError):
+        issue_credit_note("CN", i, str(i.totals.total + D("0.01")), datetime(2026, 1, 20, tzinfo=UTC))
+    assert issue_credit_note("CN", i, str(i.totals.total), datetime(2026, 1, 20, tzinfo=UTC)).amount == i.totals.total
+
+def test_reminder_date_customer_local():
+    i = inv(at=datetime(2026, 1, 31, 3, tzinfo=UTC), net=30, tz="America/Los_Angeles")
+    assert reminder_date(i, 3).isoformat() == "2026-02-26"
+    assert reminder_date(i, 0) == due_date(i)
+    with pytest.raises(ValueError):
+        reminder_date(i, -1)
+
+def _cinv(iid, cust, day, price="10.00"):
+    return issue_invoice(iid, cust, [item(price)], "US-NY", datetime(2026, 3, day, 12, tzinfo=UTC))
+
+def test_customer_statement_order_filter_no_mutation():
+    src = [_cinv("B", "c1", 2), _cinv("X", "c2", 9), _cinv("A", "c1", 1), _cinv("D", "c1", 2), _cinv("C", "c1", 2)]
+    snap = list(src)
+    p = customer_statement(src, "c1", 1, 3)
+    assert [i.invoice_id for i in p.items] == ["B", "C", "D"] and p.has_next and p.total_count == 4
+    assert [i.invoice_id for i in customer_statement(list(reversed(src)), "c1", 2, 3).items] == ["A"]
+    assert src == snap
+
+def test_top_customers_ties_and_decimal():
+    src = [_cinv("1", "zed", 1, "10.00"), _cinv("2", "amy", 1, "10.00"), _cinv("3", "bob", 1, "5.00"),
+           _cinv("4", "bob", 2, "5.00"), _cinv("5", "cat", 1, "1.00")]
+    top = top_customers(src, 3)
+    assert [c for c, _ in top] == ["amy", "bob", "zed"]
+    assert all(isinstance(t, D) for _, t in top) and top[0][1] == D("10.40")
+    assert top_customers(src, 0) == []
+
+def test_overdue_invoices_order_and_boundary():
+    a = inv("A", at=datetime(2026, 1, 1, 12, tzinfo=UTC), net=10)
+    b = inv("B", at=datetime(2026, 1, 1, 12, tzinfo=UTC), net=5)
+    c = inv("C", at=datetime(2026, 1, 1, 12, tzinfo=UTC), net=10)
+    d = inv("D", at=datetime(2026, 1, 1, 12, tzinfo=UTC), net=20)
+    now = datetime(2026, 1, 21, 9, tzinfo=UTC)   # D is due today -> not overdue
+    assert [i.invoice_id for i in overdue_invoices([c, d, a, b], now)] == ["B", "A", "C"]

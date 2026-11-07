@@ -110,7 +110,7 @@ def seed_variants(worker: str, bug_class: str, want: int = config.GATE_N_VARIANT
 def known_good(worker: str, n: int = config.GATE_N_GOOD, exclude_ids: tuple = ()) -> list[dict]:
     """The worker's real past changes that the reference suite labelled good."""
     rows = db.query("SELECT id, files FROM changes WHERE worker=? AND label='good' AND files IS NOT NULL "
-                    "AND run_id LIKE 'base-%' ORDER BY id", worker)
+                    "AND run_id='train' ORDER BY id", worker)
     seen, out = set(), []
     for r in rows:
         if r["id"] in exclude_ids or r["files"] in seen:
@@ -136,14 +136,15 @@ def new_version(worker: str, check_ids: list[int], reason: str) -> int:
     return v + 1
 
 
-def evaluate(check_id: int, worker: str, *, original: dict | None = None, run_id=None, adopt=True) -> dict:
+def evaluate(check_id: int, worker: str, *, original: dict | None = None, run_id=None, adopt=True,
+             record=True) -> dict:
     """Gate one check for one worker. `original` = {"buggy": files} for the origin worker."""
     chk = db.query("SELECT * FROM checks WHERE id=?", check_id)[0]
     code, bug_class = chk["code"], chk["bug_class"]
 
     ok, why = sandbox.static_screen(code)
     if not ok:
-        return _record(check_id, worker, "REJECT", reason=f"static screen: {why}", adopt=False)
+        return _record(check_id, worker, "REJECT", reason=f"static screen: {why}", adopt=False, record=record)
 
     variants = seed_variants(worker, bug_class, run_id=run_id)
     goods = known_good(worker)
@@ -151,7 +152,7 @@ def evaluate(check_id: int, worker: str, *, original: dict | None = None, run_id
     if len(variants) < 5:
         return _record(check_id, worker, "NOT_APPLICABLE",
                        reason=f"only {len(variants)} confirmed {bug_class} variants seedable in this area",
-                       variants_total=len(variants), adopt=False)
+                       variants_total=len(variants), adopt=False, record=record)
 
     sets = ([original["buggy"], {}] if original else []) + variants + goods
     res = run_many(code, sets)
@@ -178,15 +179,15 @@ def evaluate(check_id: int, worker: str, *, original: dict | None = None, run_id
     verdict = "REJECT" if reasons else "ADOPT"
     return _record(check_id, worker, verdict, catches_original=orig_ok, variants_caught=caught,
                    variants_total=len(variants), goods_flagged=flagged, goods_total=len(goods),
-                   runtime_s=runtime, reason="; ".join(reasons) or "all criteria met", adopt=adopt)
+                   runtime_s=runtime, reason="; ".join(reasons) or "all criteria met", adopt=adopt, record=record)
 
 
 def _record(check_id, worker, verdict, *, catches_original=None, variants_caught=0, variants_total=0,
-            goods_flagged=0, goods_total=0, runtime_s=0.0, reason="", adopt=True) -> dict:
+            goods_flagged=0, goods_total=0, runtime_s=0.0, reason="", adopt=True, record=True) -> dict:
     clo, chi = wilson(variants_caught, variants_total)
     flo, fhi = wilson(goods_flagged, goods_total)
     version = None
-    if verdict == "ADOPT" and adopt:
+    if verdict == "ADOPT" and adopt and record:
         _, ids = current_set(worker)
         version = new_version(worker, ids + [check_id], f"ADOPT check {check_id}")
     row = dict(check_id=check_id, worker=worker, verdict=verdict,
@@ -195,7 +196,8 @@ def _record(check_id, worker, verdict, *, catches_original=None, variants_caught
                goods_flagged=goods_flagged, goods_total=goods_total, runtime_s=round(runtime_s, 2),
                catch_lo=round(clo, 3), catch_hi=round(chi, 3), fa_lo=round(flo, 3), fa_hi=round(fhi, 3),
                reason=reason, check_set_version=version)
-    row["verdict_id"] = db.insert("verdicts", **row)
+    if record:
+        row["verdict_id"] = db.insert("verdicts", **row)
     return row
 
 
