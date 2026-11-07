@@ -139,7 +139,32 @@ SPECS = [
      "Accept any iterable (including generators) for `seq`."),
 ]
 
+# "implement" tickets: the function body is removed from the worker's view and the
+# worker implements it from a one-line product spec (signature kept). Unwritten team
+# conventions (rounding, tie-breaks, local dates, bucket edges) live only in the tests.
+IMPLEMENT = [
+    ("A", "billing/money.py", "money_sum", "Sum money values into a cent-rounded Decimal."),
+    ("A", "billing/line_items.py", "make_line_item", "Construct a validated LineItem from raw inputs."),
+    ("A", "billing/line_items.py", "line_discount", "Discount amount for one line item."),
+    ("A", "billing/line_items.py", "line_net", "Line amount after the line's discount."),
+    ("A", "billing/tax.py", "line_tax", "Sales tax owed for one line item in a region."),
+    ("A", "billing/tax.py", "total_tax", "Total sales tax for an order."),
+    ("A", "billing/tax.py", "tax_breakdown", "Sales tax per tax category for an order."),
+    ("B", "billing/totals.py", "compute_totals", "Order totals: subtotal, discount, tax, shipping (free over $100) and grand total."),
+    ("B", "billing/invoices.py", "issue_invoice", "Create an Invoice for a customer's items, computing its totals."),
+    ("B", "billing/invoices.py", "local_issue_date", "The calendar date the invoice was issued, for the customer."),
+    ("B", "billing/invoices.py", "due_date", "Due date: issue date plus the payment terms (net days)."),
+    ("B", "billing/invoices.py", "days_overdue", "How many days past due the invoice is at `now`."),
+    ("B", "billing/invoices.py", "is_overdue", "Whether the invoice is overdue at `now`."),
+    ("C", "billing/reports.py", "paginate", "Return one page of `seq` with paging metadata."),
+    ("C", "billing/reports.py", "invoice_page", "One page of invoices for the invoice list screen, newest first."),
+    ("C", "billing/reports.py", "revenue_by_month", "Total invoiced revenue per month ('YYYY-MM') in the given time zone."),
+    ("C", "billing/reports.py", "aging_bucket", "Map days overdue to an aging bucket label: current, 1-30, 31-60, 61-90, 90+."),
+    ("C", "billing/reports.py", "aging_report", "Outstanding amount per aging bucket at `now`."),
+]
+
 KIND_PREFIX = {
+    "implement": "Implement",
     "decouple": "Decouple",
     "perf": "Performance",
     "extend": "Feature",
@@ -150,10 +175,15 @@ KIND_PREFIX = {
 def build(seed: int = 7):
     rng = random.Random(seed)
     for w in "ABC":
-        rows = [s for s in SPECS if s[0] == w]
+        impl = [(w2, f, fn, "implement", spec) for (w2, f, fn, spec) in IMPLEMENT if w2 == w]
+        edits = [s for s in SPECS if s[0] == w]
+        rng.shuffle(edits)
+        rows = impl + edits[: 20 - len(impl)]
         rng.shuffle(rows)
         issues = []
         for i, (_, file, fn, kind, ask) in enumerate(rows, 1):
+            body = (f"Spec: {ask}" if kind == "implement"
+                    else f"{ask} Existing behaviour and all current callers must keep working.")
             issues.append({
                 "id": f"{w}-{i:02d}",
                 "worker": w,
@@ -161,7 +191,7 @@ def build(seed: int = 7):
                 "function": fn,
                 "kind": kind,
                 "title": f"{KIND_PREFIX[kind]}: `{fn}`",
-                "body": f"{ask} Existing behaviour and all current callers must keep working.",
+                "body": body,
             })
         n_hold = round(len(issues) / 3)
         for k, iss in enumerate(issues):

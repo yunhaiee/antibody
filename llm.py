@@ -45,19 +45,17 @@ def call(role: str, system: str, user: str, *, schema: dict | None = None,
     if schema:
         output_config["format"] = {"type": "json_schema", "schema": schema}
 
+    model = config.MODEL_BY_ROLE.get(role, config.CLAUDE_MODEL)
+    kwargs = dict(model=model, max_tokens=max_tokens or config.LLM_MAX_TOKENS, system=sys_blocks,
+                  messages=[{"role": "user", "content": user}], output_config=output_config)
+    if model not in config.NO_FALLBACK_MODELS:
+        kwargs.update(betas=["server-side-fallback-2026-07-01"], fallbacks="default")
+
     t0 = time.monotonic()
     err = None
     resp = None
     try:
-        resp = client().beta.messages.create(
-            model=config.CLAUDE_MODEL,
-            max_tokens=max_tokens or config.LLM_MAX_TOKENS,
-            system=sys_blocks,
-            messages=[{"role": "user", "content": user}],
-            output_config=output_config,
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",
-        )
+        resp = client().beta.messages.create(**kwargs)
     except anthropic.APIStatusError as e:
         err = f"{type(e).__name__} {e.status_code}: {e.message}"
     except anthropic.APIConnectionError as e:
@@ -80,7 +78,7 @@ def call(role: str, system: str, user: str, *, schema: dict | None = None,
         elif stop == "max_tokens":
             err = "truncated at max_tokens"
 
-    call_id = db.insert("llm_calls", provider="anthropic", model=config.CLAUDE_MODEL, role=role,
+    call_id = db.insert("llm_calls", provider="anthropic", model=model, role=role,
                         run_id=run_id, effort=effort, stop_reason=stop, latency_ms=latency_ms,
                         prompt=(system + "\n---\n" + (context or "")[:2000] + "\n---\n" + user)[:20000],
                         output=text[:20000], error=err, **usage)

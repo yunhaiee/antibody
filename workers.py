@@ -26,20 +26,44 @@ def load_issues(worker: str) -> list[dict]:
     return json.loads((config.ISSUES_DIR / f"{worker}.json").read_text())
 
 
-def package_source(files: dict[str, str] | None = None) -> str:
+def strip_docs(src: str) -> str:
+    """Code without docstrings/comments: business rules live in the hidden tests,
+    as in many real codebases."""
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef)) and node.body \
+                and isinstance(node.body[0], ast.Expr) and isinstance(getattr(node.body[0], "value", None), ast.Constant) \
+                and isinstance(node.body[0].value.value, str):
+            node.body = node.body[1:] or [ast.Pass()]
+    return ast.unparse(tree) + "\n"
+
+
+def stub_function(src: str, fn: str) -> str:
+    """Replace a function's body with `raise NotImplementedError` (signature kept)."""
+    tree = ast.parse(src)
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == fn:
+            node.body = [ast.parse("raise NotImplementedError").body[0]]
+    return ast.unparse(tree) + "\n"
+
+
+def package_source(files: dict[str, str] | None = None, strip: bool | None = None) -> str:
     """Full billing source, deterministic order -> stable cache prefix."""
     files = files or {}
+    strip = config.WORKER_CONTEXT_STRIP_DOCS if strip is None else strip
     parts = []
     for p in sorted((config.BILLING_REPO / "billing").glob("*.py")):
         rel = f"billing/{p.name}"
-        parts.append(f"### FILE: {rel}\n```python\n{files.get(rel, p.read_text())}```\n")
+        src = files.get(rel, p.read_text())
+        parts.append(f"### FILE: {rel}\n```python\n{strip_docs(src) if strip else src}```\n")
     return "<billing_package>\n" + "\n".join(parts) + "</billing_package>"
 
 
 WORKER_SYSTEM = """You are Worker {worker}, a software engineer on a small billing service.
 You implement one ticket at a time. You may change ONLY the single function named in the
 ticket. Return the complete new source of that function (def line through end, module-level
-indentation) plus any import lines the function newly needs. Do not change other functions.
+indentation), any import lines it newly needs, and any NEW module-level helpers/constants it
+uses (`module_helpers`, may be empty). Do not change other existing functions.
 Keep the function's existing behaviour for all current callers unless the ticket says otherwise.
 {extra}"""
 
@@ -48,16 +72,22 @@ CHANGE_SCHEMA = {
     "properties": {
         "function_source": {"type": "string"},
         "new_imports": {"type": "array", "items": {"type": "string"}},
+        "module_helpers": {"type": "string"},
         "notes": {"type": "string"},
     },
-    "required": ["function_source", "new_imports", "notes"],
+    "required": ["function_source", "new_imports", "module_helpers", "notes"],
     "additionalProperties": False,
 }
 
 
-def splice(file_text: str, fn_name: str, new_fn_src: str, new_imports: list[str]) -> str:
-    """Replace top-level function `fn_name` with `new_fn_src`; add missing imports."""
+def splice(file_text: str, fn_name: str, new_fn_src: str, new_imports: list[str],
+           helpers: str = "") -> str:
+    """Replace top-level function `fn_name` with `new_fn_src` (preceded by any new
+    module-level helpers); add missing imports."""
     new_fn_src = new_fn_src.strip("\n") + "\n"
+    if helpers.strip():
+        ast.parse(helpers)
+        new_fn_src = helpers.strip("\n") + "\n\n\n" + new_fn_src
     ast.parse(new_fn_src)  # raises SyntaxError on garbage
     tree = ast.parse(file_text)
     lines = file_text.splitlines(keepends=True)
@@ -87,10 +117,15 @@ def propose(worker: str, issue: dict, *, notes: list[str] | None = None,
     user = f"Ticket {issue['id']}: {issue['title']}\n\n{issue['body']}\n\nFile: {issue['file']}\nFunction: {issue['function']}"
     if feedback:
         user += f"\n\nYour previous attempt was blocked by an automated check:\n{feedback}\nFix it."
+    view = None
+    if issue["kind"] == "implement":
+        src = (config.BILLING_REPO / issue["file"]).read_text()
+        view = {issue["file"]: stub_function(strip_docs(src), issue["function"])}
     r = llm.call("worker", WORKER_SYSTEM.format(worker=worker, extra=extra), user,
-                 context=package_source(), schema=CHANGE_SCHEMA, run_id=run_id)
+                 context=package_source(view), schema=CHANGE_SCHEMA, run_id=run_id)
     base = (config.BILLING_REPO / issue["file"]).read_text()
-    new = splice(base, issue["function"], r["data"]["function_source"], r["data"]["new_imports"])
+    new = splice(base, issue["function"], r["data"]["function_source"], r["data"]["new_imports"],
+                 r["data"].get("module_helpers", ""))
     return {"files": {issue["file"]: new}, "call": r, "notes": r["data"]["notes"]}
 
 
@@ -129,11 +164,34 @@ CLASSIFY_SCHEMA = {
 }
 
 
+def test_sources(names: list[str]) -> str:
+    tree = ast.parse(_REF_TESTS)
+    lines = _REF_TESTS.splitlines()
+    out = []
+    for n in tree.body:
+        if isinstance(n, ast.FunctionDef) and n.name in names:
+            start = (n.decorator_list[0].lineno if n.decorator_list else n.lineno) - 1
+            out.append("\n".join(lines[start:n.end_lineno]))
+    return "\n\n".join(out)
+
+
+BUG_CLASS_GUIDE = """- float_money: binary float used for money / Decimal contract lost
+- rounding: wrong rounding mode, rounding at the wrong step (per line vs total)
+- tax_base: tax computed on the wrong base (gross vs net, shipping taxed)
+- timezone: naive datetimes, wrong zone, UTC vs customer-local date
+- boundary_off_by_one: inclusive/exclusive edge wrong (pagination, buckets, thresholds, overdue day)
+- input_mutation: caller's input mutated (in-place sort/append)
+- validation: missing/wrong input validation or wrong exception type
+- ordering: wrong sort order or tie-break
+- type_contract: wrong return type/shape other than money
+- other: none of the above"""
+
+
 def classify_bug(diff: str, failed_tests: list[str], trace: str, run_id=None) -> str:
     r = llm.call("router",
-                 "Classify the root cause of a regression in a Python billing service into exactly one bug class:\n"
-                 + "\n".join(f"- {c}" for c in BUG_CLASSES),
-                 f"Diff:\n{diff}\n\nFailing reference tests: {failed_tests}\n\nTrace:\n{trace}",
+                 "Classify the ROOT CAUSE of a regression in a Python billing service into exactly one bug class:\n"
+                 + BUG_CLASS_GUIDE,
+                 f"Diff:\n{diff}\n\nFailing reference tests:\n{test_sources(failed_tests)}\n\nTrace:\n{trace}",
                  schema=CLASSIFY_SCHEMA, run_id=run_id)
     return r["data"]["bug_class"]
 
@@ -152,7 +210,8 @@ def run_issue(worker: str, issue: dict, arm: str = "none", seed: int = 0, run_id
     bug_class = classify_bug(diff, lab["failed_tests"], lab["trace"], run_id) if lab["label"] == "buggy" else None
     cid = db.insert("changes", run_id=run_id, arm=arm, worker=worker, issue_id=issue["id"], seed=seed,
                     diff=diff, label=lab["label"], bug_class=bug_class, failing_trace=lab["trace"],
-                    ref_passed=lab["n_passed"], ref_failed=len(lab["failed_tests"]))
+                    ref_passed=lab["n_passed"], ref_failed=len(lab["failed_tests"]),
+                    files=prop["files"], failed_tests=lab["failed_tests"])
     return {"change_id": cid, "label": lab["label"], "bug_class": bug_class,
             "failed_tests": lab["failed_tests"], "files": prop["files"], "diff": diff}
 
@@ -162,7 +221,7 @@ if __name__ == "__main__":
     from concurrent.futures import ThreadPoolExecutor
     worker = sys.argv[1] if len(sys.argv) > 1 else "A"
     n = int(sys.argv[2]) if len(sys.argv) > 2 else 5
-    run_id = f"pilot-{worker}"
+    run_id = sys.argv[3] if len(sys.argv) > 3 else f"pilot-{worker}"
     issues = load_issues(worker)[:n]
     with ThreadPoolExecutor(6) as ex:
         for iss, res in zip(issues, ex.map(lambda i: run_issue(worker, i, run_id=run_id), issues)):

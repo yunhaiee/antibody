@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS runs (
 CREATE TABLE IF NOT EXISTS changes (
   id INTEGER PRIMARY KEY, ts REAL, run_id TEXT, arm TEXT, worker TEXT, issue_id TEXT, seed INT,
   diff TEXT, label TEXT, bug_class TEXT, failing_trace TEXT, ref_passed INT, ref_failed INT,
-  blocked_by TEXT);
+  blocked_by TEXT, files TEXT, failed_tests TEXT);
 CREATE TABLE IF NOT EXISTS checks (
   id INTEGER PRIMARY KEY, ts REAL, hash TEXT UNIQUE, origin_worker TEXT, owner_worker TEXT,
   parent_id INT, bug_class TEXT, signature TEXT, kind TEXT, code TEXT, fix_recipe TEXT,

@@ -17,6 +17,12 @@ ISSUES_DIR = ROOT / "issues"
 # ---- LLM: Claude (Anthropic API). One model; effort is the per-role dial so every
 # role shares one prompt-cache namespace. ----
 CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-opus-5-5")
+# Workers are a cheap, fast fleet (Opus 5.5 workers passed 18/18 pilot issues, leaving
+# nothing to learn from); the expensive model writes and adapts the checks.
+MODEL_BY_ROLE = {"worker": os.environ.get("WORKER_MODEL", "claude-haiku-5-5")}
+NO_FALLBACK_MODELS = ("claude-haiku-5-5",)  # Haiku 5.5 has no server-side fallback
+# Workers see code without docstrings/comments (rules live in the hidden tests).
+WORKER_CONTEXT_STRIP_DOCS = os.environ.get("WORKER_CONTEXT_STRIP_DOCS", "1") == "1"
 EFFORT = {            # per-role reasoning effort
     "writer": "high",     # turns a failure into a general check + variants + look-alikes
     "adapter": "medium",  # rewrites a peer's check for this worker's module
