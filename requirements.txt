@@ -4,3 +4,4 @@ pytest
 hypothesis
 python-dotenv
 tzdata
+google-genai>=2.3.0
