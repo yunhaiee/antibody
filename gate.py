@@ -107,8 +107,41 @@ def seed_variants(worker: str, bug_class: str, want: int = config.GATE_N_VARIANT
     return seed_variants(worker, bug_class, want, run_id)
 
 
+GOOD_SYSTEM = """You write realistic, behaviour-preserving rewrites of existing functions (the kind of
+refactor a teammate would ship): renamed locals, restructured control flow, helper extraction
+inside the function, equivalent expressions. They must keep EXACT behaviour, including rounding,
+types, validation and ordering. Each is a complete module-level function with its signature."""
+
+
+def synthetic_good(worker: str, need: int, run_id=None) -> list[dict]:
+    """Top-up known-good changes: independent rewrites (never see any check), kept only if
+    the reference suite labels them good. Cached in gate_material(kind='good')."""
+    have = db.query("SELECT files FROM gate_material WHERE worker=? AND kind='good' AND ref_label='good' ORDER BY id", worker)
+    if len(have) >= need:
+        return [json.loads(r["files"]) for r in have[:need]]
+    src = "\n".join(f"### FILE: {f}\n```python\n{(config.BILLING_REPO / f).read_text()}```" for f in AREA[worker])
+    r = llm.call("adapter", GOOD_SYSTEM, f"Write {need + 6} rewrites spread across the functions below.",
+                 context=src, schema=SEED_SCHEMA, run_id=run_id)
+    cands = []
+    for v in r["data"]["variants"]:
+        if v["file"] in AREA[worker]:
+            try:
+                base = (config.BILLING_REPO / v["file"]).read_text()
+                cands.append({v["file"]: workers.splice(base, v["function"], v["function_source"], [])})
+            except Exception:
+                pass
+    with ThreadPoolExecutor(6) as ex:
+        labels = list(ex.map(lambda f: workers.reference_label(f)["label"], cands))
+    for files, lab in zip(cands, labels):
+        db.insert("gate_material", worker=worker, bug_class=None, kind="good", files=files, ref_label=lab,
+                  source=f"rewrite call {r['call_id']}")
+    have = db.query("SELECT files FROM gate_material WHERE worker=? AND kind='good' AND ref_label='good' ORDER BY id", worker)
+    return [json.loads(r["files"]) for r in have[:need]]
+
+
 def known_good(worker: str, n: int = config.GATE_N_GOOD, exclude_ids: tuple = ()) -> list[dict]:
-    """The worker's real past changes that the reference suite labelled good."""
+    """The worker's real past changes that the reference suite labelled good, topped up with
+    reference-confirmed independent rewrites if the history has fewer than n distinct ones."""
     rows = db.query("SELECT id, files FROM changes WHERE worker=? AND label='good' AND files IS NOT NULL "
                     "AND run_id='train' ORDER BY id", worker)
     seen, out = set(), []
@@ -119,6 +152,8 @@ def known_good(worker: str, n: int = config.GATE_N_GOOD, exclude_ids: tuple = ()
         out.append(json.loads(r["files"]))
         if len(out) == n:
             break
+    if len(out) < n:
+        out += synthetic_good(worker, n - len(out))
     return out
 
 

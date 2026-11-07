@@ -62,6 +62,9 @@ def fmt_verdicts(vs: list[dict]) -> str:
         if v["verdict"] == "ROLLBACK":
             lines.append(f"| {v['worker']} | ROLLBACK | | | | {v['reason']} |")
             continue
+        if v["verdict"] == "NOT_APPLICABLE":
+            lines.append(f"| {v['worker']} | NOT_APPLICABLE | – | – | – | – |")
+            continue
         orig = {1: "yes", 0: "no"}.get(v["catches_original"], "–")
         lines.append(f"| {v['worker']} | {v['verdict']} | {orig} | {v['variants_caught']}/{v['variants_total']} | "
                      f"{v['goods_flagged']}/{v['goods_total']} | {v['catch_lo']:.2f}–{v['catch_hi']:.2f} |")
