@@ -73,7 +73,65 @@ check learned earlier exercises nothing, and what transfers is the check's **rec
 ships both: the check (enforcement, gated and rollback-able) and the recipe (guidance). We measured
 each part separately instead of claiming the combination does everything.
 
-RESULTS_PLACEHOLDER
+<!-- RESULTS:START -->
+### Key findings
+
+- **The same bug on code the system has learned about.** Re-attempting the 4 training tickets that failed (5 fresh seeds each, 20 attempts): **20/20** come back buggy with no learning, **7/20** with the lessons as prompt notes, and **0** merge buggy with checks (20/20 blocked, 0 false blocks). A note is advice; a check is a guarantee.
+- **New code (held-out tickets that implement functions which did not exist during learning).** Repeat-class bugs merged: none 19/105, own notes 15/105, shared recipes as notes 10/105, checks only 19/105, network checks 19/105, checks + recipes 14/105, + work-time instances 12/105. Learned checks never exercise code written later, so on new functions the transferable part is the **recipe**. Instantiating checks for a new function at work time helps a little, but with no oracle it also sent 4 correct changes back for a retry.
+
+### Held-out experiment
+
+**Setup**: 21 held-out tickets × 5 seeds = 105 attempts per arm, with the same tickets and seeds in every arm. `none`, `checks` and `network` share the same initial proposals. A *repeat bug* is a buggy change that merges and belongs to a bug class already seen in training. Labels come from the hidden reference suite.
+
+| arm | what the worker gets | buggy merged | repeat-bug rate (Wilson 80%) | correct merged | blocked | false blocks |
+|---|---|---|---|---|---|---|
+| `none` | nothing | 19 | 0.181 [0.138–0.234] | 82% | 0 | 0 |
+| `notes` | its own lessons as rules-file notes | 15 | 0.143 [0.105–0.192] | 86% | 0 | 0 |
+| `shared_notes` | the antibody recipes as notes, no checks (control) | 10 | 0.095 [0.065–0.138] | 90% | 0 | 0 |
+| `checks` | its own adopted checks gate merges (1 retry) | 19 | 0.181 [0.138–0.234] | 80% | 2 | 2 |
+| `network` | own + peers' adapted checks, live rollback | 19 | 0.181 [0.138–0.234] | 81% | 1 | 1 |
+| `antibody` | network checks **and** their fix recipes | 14 | 0.133 [0.096–0.181] | 86% | 1 | 1 |
+| `antibody+instances` | antibody + work-time instances of proven checks for NEW functions (advisory: feedback + 1 retry) | 12 | 0.114 [0.080–0.160] | 88% | 12 | 1 |
+
+**Recurrence on covered code** (not held-out; training tickets that failed, seeds 10–14): no learning 20/20 buggy · notes 7/20 buggy · checks block 20/20 buggy, flag 0/0 good.
+
+**Held-out effect of each check-set version.** Each version is applied to the same held-out proposals from the `none` arm:
+
+| worker · version | change | held-out buggy caught | held-out correct flagged |
+|---|---|---|---|
+| A-v0 | no checks | 0/3 | 0/32 |
+| A-v1 | ADOPT check 2 | 0/3 | 0/32 |
+| A-v2 | ADOPT check 5 | 0/3 | 5/32 |
+| A-v3 | ADOPT check 10 | 0/3 | 5/32 |
+| A-v4 | ADOPT check 12 | 0/3 | 5/32 |
+| A-v5 | ROLLBACK check 5: 2 false alarms in last 10 | 0/3 | 0/32 |
+| B-v0 | no checks | 0/10 | 0/25 |
+| B-v1 | ADOPT check 1 | 0/10 | 0/25 |
+| B-v2 | ADOPT check 3 | 0/10 | 0/25 |
+| B-v3 | ADOPT check 7 | 0/10 | 0/25 |
+| B-v4 | ADOPT check 11 | 0/10 | 0/25 |
+| C-v0 | no checks | 0/6 | 0/29 |
+| C-v1 | ADOPT check 6 | 0/6 | 0/29 |
+| C-v2 | ADOPT check 8 | 0/6 | 0/29 |
+| C-v3 | ADOPT check 13 | 0/6 | 0/29 |
+
+**A worker hits a bug class another worker already solved** (both paths run for real; tokens and minutes come from the call log):
+
+| ticket | path | verdict | fix (reference suite) | tokens | minutes |
+|---|---|---|---|---|---|
+| B B-18 (validation) | Registry: lookup → adapt check #5 from worker A → gate | ADOPT | good | 18,988 | 0.48 |
+| B B-18 (validation) | from scratch: Writer + CEGIS + gate | REJECT | good | 31,171 | 1.75 |
+| B B-16 (validation) | Registry: lookup → adapt check #5 from worker A → gate | ADOPT | buggy | 10,603 | 0.54 |
+| B B-16 (validation) | from scratch: Writer + CEGIS + gate | REJECT | buggy | 47,821 | 2.77 |
+
+**Registry verdicts**: ADOPT 11, NOT_APPLICABLE 2, REJECT 2, ROLLBACK 1. Every ROLLBACK came from the frozen rule (≥ 2 false alarms in the last 10 monitored changes).
+
+**CEGIS ablation** (single-round Writer, same failures, origin worker's gate): 4/5 adopted, 37/40 variants caught; with CEGIS: 5/5 adopted, 40/40 variants caught. B validation: REJECT 5/8
+
+**Registry matching** on the 19 real held-out failures: SubQ Snap 1.1 (one yes/no decision per proven check, about 0.4 s and under 1k input tokens per lookup) found the right check family **15/19** times; keyword signatures found it 12/19 times. The reference is the bug classifier's label, which is itself imperfect. (`snap_eval.py`)
+
+**Cost log** (all calls in this run, from `llm_calls`): claude-haiku-5-5: 559 calls, 64,513 input + 644,113 cached input, 465,865 output tokens; claude-opus-5-5: 195 calls, 202,168 input + 186,933 cached input, 334,334 output tokens; subq-snap-1.1: 19 calls, 21,050 input + 0 cached input, 0 output tokens
+<!-- RESULTS:END -->
 
 ## Agents
 

@@ -82,12 +82,18 @@ def answer_find(text: str, bug_class: str) -> str:
         return (f"No **proven** check matches that ({bug_class}). Proven = adopted by at least one worker "
                 f"after passing the gate. Registry: {json.dumps(registry_core.stats())}")
     m = matches[0]
-    adopted = sorted({v["worker"] for v in m["verdicts"] if v["verdict"] == "ADOPT"})
+    state = {}
+    for v in m["verdicts"]:  # current adoption per worker (ROLLBACK undoes an ADOPT)
+        if v["verdict"] in ("ADOPT", "ROLLBACK"):
+            state[v["worker"]] = v["verdict"] == "ADOPT"
+    adopted = sorted(w for w, on in state.items() if on)
+    rolled = sorted(w for w, on in state.items() if not on)
     code = "\n".join(m["code"].splitlines()[:45])
     more = "" if len(matches) == 1 else "\n\nOther matches: " + ", ".join(
         f"#{x['check_id']} ({x['bug_class']}, score {x['score']})" for x in matches[1:4])
     return (f"Yes — check **#{m['check_id']}** ({m['bug_class']}), written by Worker {m['origin_worker']}'s "
-            f"Antibody Writer, adopted by worker(s) {', '.join(adopted) or '–'}. Matched by {via} (score {m['score']}).\n\n"
+            f"Antibody Writer; currently adopted by worker(s) {', '.join(adopted) or '–'}"
+            + (f", rolled back by {', '.join(rolled)}" if rolled else "") + f". Matched by {via} (score {m['score']}).\n\n"
             f"**Evidence (every number from a sandboxed run, labelled by the hidden reference suite):**\n"
             f"{fmt_verdicts(m['verdicts'])}\n\n**Fix recipe:** {m['fix_recipe']}\n\n"
             f"```python\n{code}\n```\n(sha {m['hash']}){more}")

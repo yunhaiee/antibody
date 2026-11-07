@@ -162,8 +162,8 @@ def beat4():
 
 
 def beat5(live=False):
-    h("5 · ASI:One → “Is there a proven check for floating-point money bugs?”")
-    q = "Is there a proven check for floating-point money bugs?"
+    q = "Is there a proven check for money amounts handled as float instead of Decimal?"
+    h(f"5 · ASI:One → “{q}”")
     if live:
         sys.path.insert(0, str(config.ROOT / "agents"))
         from agents.registry import handle_text
